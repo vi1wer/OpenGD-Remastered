@@ -32,10 +32,6 @@
  <a href="https://github.com/Open-GD/OpenGD/issues">Request Feature</a>
   </p>
 </div>
-
-
-# UNMAINTAINED
-new (unfinished) projects are [gdrender](https://github.com/maxnut/gdrender) and [gdclone](https://github.com/opstic/gdclone)
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
