@@ -24,6 +24,7 @@
 #include "Director.h"
 #include "EventDispatcher.h"
 #include "GameToolbox/log.h"
+#include <algorithm>
 
 USING_NS_AX;
 
@@ -74,11 +75,14 @@ void BoomScrollLayer::changePageRight()
 
 	for (auto l : _internalLayer->getChildren())
 	{
-		auto ac = ax::MoveBy::create(1.5f, {newX, _internalLayer->getPositionY()});
+		l->stopAllActions();
+		auto ac = ax::MoveBy::create(0.45f, {newX, 0.f});
 		l->runAction(ax::EaseElasticOut::create(ac));
 	}
 
 	_currentPage = _currentPage + 1 >= _layers.size() ? 0 : _currentPage + 1;
+	if (_onPageChanged)
+		_onPageChanged(_currentPage);
 }
 
 void BoomScrollLayer::changePageLeft()
@@ -98,39 +102,39 @@ void BoomScrollLayer::changePageLeft()
 
 	for (auto l : _internalLayer->getChildren())
 	{
-		auto ac = ax::MoveBy::create(1.5f, {newX, _internalLayer->getPositionY()});
+		l->stopAllActions();
+		auto ac = ax::MoveBy::create(0.45f, {newX, 0.f});
 		l->runAction(ax::EaseElasticOut::create(ac));
 	}
 
 	_currentPage = _currentPage - 1 < 0 ? _layers.size() - 1 : _currentPage - 1;
+	if (_onPageChanged)
+		_onPageChanged(_currentPage);
 }
 
 bool BoomScrollLayer::init(std::vector<ax::Layer*> layers, int currentPage)
 {
 	if (!Layer::init()) return false;
 
-	_totalPages = layers.size();
+	_layers.clear();
+	_layers.reserve(layers.size());
+	for (auto* l : layers)
+	{
+		if (l)
+			_layers.push_back(l);
+	}
+	_totalPages = static_cast<int>(_layers.size());
+	if (_totalPages <= 0)
+		return false;
 
-	currentPage = std::clamp(currentPage, 0, _totalPages);
-
-	_layers = layers;
+	currentPage = std::clamp(currentPage, 0, _totalPages - 1);
 	_currentPage = currentPage;
 	_internalLayer = Layer::create();
 	_internalLayer->setAnchorPoint(Vec2::ANCHOR_MIDDLE);
 	auto dir = Director::getInstance();
 	const auto& winSize = dir->getWinSize();
-	if (_internalLayer->getChildrenCount() < _totalPages)
-	{
-		int i = 0;
-		for (auto l : _layers)
-		{
-			if (!l) return false;
-			// l->setPositionX(winSize.width * i);
-			// _internalLayer->addChild(l);
-			l->retain();
-			i++;
-		}
-	}
+	for (auto* l : _layers)
+		l->retain();
 
 	_internalLayer->addChild(_layers[currentPage]);
 	_layers[currentPage]->setName("1");

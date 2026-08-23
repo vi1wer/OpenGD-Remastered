@@ -30,6 +30,45 @@
 
 USING_NS_AX;
 
+namespace
+{
+bool resourcesPresentAtPath(FileUtils* fu, const std::string& resourcesPath)
+{
+	const std::string iconsPath = resourcesPath + "/icons";
+	return fu->isFileExist(resourcesPath + "/game_bg_01_001-hd.png")
+		&& fu->isFileExist(resourcesPath + "/GJ_LaunchSheet-hd.png")
+		&& (fu->isFileExist(resourcesPath + "/GJ_GameSheet03-uhd.png")
+			|| fu->isFileExist(resourcesPath + "/GJ_GameSheet03-hd.png"))
+		&& fu->isFileExist(iconsPath + "/player_01-hd.png")
+		&& fu->isDirectoryExist(iconsPath);
+}
+
+bool resourcesPresentOnSearchPath(FileUtils* fu)
+{
+	return fu->isFileExist("game_bg_01_001-hd.png")
+		&& fu->isFileExist("GJ_LaunchSheet-hd.png")
+		&& (fu->isFileExist("GJ_GameSheet03-uhd.png") || fu->isFileExist("GJ_GameSheet03-hd.png"))
+		&& fu->isFileExist("player_01-hd.png");
+}
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+#include <windows.h>
+std::string getExeDirectoryWindows()
+{
+	wchar_t path[MAX_PATH] = {0};
+	if (GetModuleFileNameW(nullptr, path, MAX_PATH) == 0)
+		return {};
+
+	std::wstring wpath(path);
+	const auto slash = wpath.find_last_of(L"\\/");
+	if (slash == std::wstring::npos)
+		return {};
+
+	return {wpath.begin(), wpath.begin() + static_cast<std::ptrdiff_t>(slash)};
+}
+#endif
+}
+
 ResourcesLoadingLayer* ResourcesLoadingLayer::create() {
 	ResourcesLoadingLayer* pRet = new ResourcesLoadingLayer();
 	if (pRet->init()) {
@@ -56,6 +95,24 @@ void ResourcesLoadingLayer::loadLoadingLayer()
 	}), nullptr));
 }
 
+bool ResourcesLoadingLayer::tryLoadFromResourcesPath(const std::string& resourcesPath, bool persist)
+{
+	if (!resourcesPresentAtPath(_fu, resourcesPath))
+		return false;
+
+	_fu->addSearchPath(resourcesPath, true);
+	_fu->addSearchPath(resourcesPath + "/icons", true);
+
+	if (persist)
+	{
+		_gm->set<std::string>("resources_path", resourcesPath);
+		_gm->save();
+	}
+
+	loadLoadingLayer();
+	return true;
+}
+
 bool ResourcesLoadingLayer::init()
 {
 	_fu = FileUtils::getInstance();
@@ -64,8 +121,18 @@ bool ResourcesLoadingLayer::init()
 	{
 		GameToolbox::log("search path: {}", a);
 	}
-	//some random files to check if theres already a path added
-	if (_fu->isFileExist("game_bg_01_001-hd.png") && _fu->isFileExist("GJ_LaunchSheet-hd.png") && _fu->isFileExist("GJ_GameSheet03-uhd.png") && _fu->isFileExist("player_01-hd.png"))
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+	const std::string exeDirEarly = getExeDirectoryWindows();
+	if (!exeDirEarly.empty())
+	{
+		if (_fu->isDirectoryExist(exeDirEarly + "\\Content"))
+			_fu->addSearchPath(exeDirEarly + "\\Content", false);
+		_fu->addSearchPath(exeDirEarly, false);
+	}
+#endif
+
+	if (resourcesPresentOnSearchPath(_fu))
 	{
 		loadLoadingLayer();
 		return true;
@@ -78,15 +145,35 @@ bool ResourcesLoadingLayer::init()
 	auto winSize = _dir->getWinSize();
 	_posMiddle = { winSize.width / 2, winSize.height / 2 };
 
-	if(auto path = _gm->get<std::string>("resources_path"); !path.empty() && _fu->isDirectoryExist(path))
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+	const std::string exeDir = getExeDirectoryWindows();
+	if (!exeDir.empty())
 	{
-		_fu->addSearchPath(path, true);
-		_fu->addSearchPath(path + "\\icons", true);
-		loadLoadingLayer();
-		return true;
+		if (tryLoadFromResourcesPath(exeDir + "\\Resources", true))
+			return true;
+	}
+#endif
+
+	if(auto path = _gm->get<std::string>("resources_path"); !path.empty())
+	{
+		if (tryLoadFromResourcesPath(path, false))
+			return true;
 	}
 
 #if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+	static const char* kFallbackResourcePaths[] = {
+		"D:\\GeometryDash 2.2081\\Resources",
+		"D:\\GeometryDashGeode\\Resources",
+		"D:\\Geometry_Dash_v2.2074\\Resources",
+		"D:\\GDPS\\Resources",
+	};
+
+	for (const char* fallbackPath : kFallbackResourcePaths)
+	{
+		if (tryLoadFromResourcesPath(fallbackPath, true))
+			return true;
+	}
+
 	handleWindows();
 #endif
 
@@ -130,11 +217,7 @@ void ResourcesLoadingLayer::handleWindows()
 			{
 				exepath.erase(exepath.find_last_of('\\'));
 				std::string resourcesPath = fmt::format("{}\\Resources", exepath);
-				_fu->addSearchPath(resourcesPath, true);
-				_fu->addSearchPath(resourcesPath + "\\icons", true);
-				_gm->set<std::string>("resources_path", resourcesPath);
-				_gm->save();
-				loadLoadingLayer();
+				tryLoadFromResourcesPath(resourcesPath, true);
 			}
 			else
 			{
@@ -156,7 +239,7 @@ bool ResourcesLoadingLayer::isWindowsGDPathValid(std::string exepath)
 	if (!_fu->isFileExist(fmt::format("{}\\libcocos2d.dll", exepath))) return false;
 	if (!_fu->isFileExist(fmt::format("{}\\libcurl.dll", exepath))) return false;
 
-	return true;
+	return resourcesPresentAtPath(_fu, fmt::format("{}\\Resources", exepath));
 }
 
 

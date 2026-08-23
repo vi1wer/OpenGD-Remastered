@@ -17,29 +17,13 @@
 *************************************************************************/
 
 #include "CircleWave.h"
-#include "platform/GL.h"
 #include "Director.h"
 #include "2d/ActionInstant.h"
 #include "2d/ActionManager.h"
 #include "2d/ActionEase.h"
+#include "base/Types.h"
 
 USING_NS_AX;
-
-void CircleWave::draw(ax::Renderer *renderer, const ax::Mat4& transform, uint32_t flags) 
-{
-   // log_ << "ASSA";
-	glBlendFunc(0x302, 1);
-	glLineWidth(this->_lineWidth);
-
-	if (this->_filled)
-		this->drawSolidCircle(this->getPosition(), this->_radius, 0.0f, (this->_radius <= 400.0) ? (30) : (60), this->_color);
-	else
-		this->drawCircle(this->getPosition(), this->_radius, 0.0f, this->_radius <= 400.0 ? 30 : 60, false, this->_color);
-
-	glBlendFunc(1u, 0x303u);
-
-	this->drawSolidCircle(Director::getInstance()->getWinSize() / 2, 100, 90, 100, {1,1,1,1});
-}
 
 void CircleWave::setColor(Color4B col) 
 {
@@ -59,6 +43,8 @@ bool CircleWave::init(float duration, Color4B color, float radiusMin, float radi
 	this->_radius = radiusMin;
 	this->_lineWidth = lineWidth;
 	this->_filled = filled;
+	this->_followedNode = nullptr;
+	setBlendFunc(BlendFunc::ADDITIVE);
 
 	if (easing)
 	{
@@ -97,20 +83,15 @@ void CircleWave::updateTweenAction(float value, std::string_view key)
 
 void CircleWave::update(float dt)
 {
-	if (this->_followedNode) {
-		this->setPosition(_followedNode->getPosition() / 2);
-	}
+	if (this->_followedNode)
+		this->setPosition(_followedNode->getPosition());
 
 	this->clear();
-	glBlendFunc(0x302, 1);
-	glLineWidth(this->_lineWidth);
-
+	const int segs = this->_radius <= 400.f ? 30 : 60;
 	if (this->_filled)
-		this->drawSolidCircle(this->getPosition(), this->_radius, 0.0f, (this->_radius <= 400.0) ? (30) : (60), this->_color);
+		this->drawSolidCircle(Vec2::ZERO, this->_radius, 0.0f, segs, this->_color);
 	else
-		this->drawCircle(this->getPosition(), this->_radius, 0.0f, this->_radius <= 400.0 ? 30 : 60, false, this->_color);
-
-	glBlendFunc(1u, 0x303u);
+		this->drawCircle(Vec2::ZERO, this->_radius, 0.0f, segs, false, this->_color);
 }
 
 void CircleWave::followNode(Node* node) {

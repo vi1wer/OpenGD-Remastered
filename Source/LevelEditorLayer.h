@@ -38,6 +38,10 @@ private:
     GameObject *_selectedObjectReal = nullptr;
 
     bool _shiftPressed = false;
+
+    bool _cameraPanning = false;
+    ax::Vec2 _panTouchStart;
+    ax::Vec2 _camAtPanStart;
 public:
 
 	static ax::Scene* scene(GJGameLevel* level);

@@ -35,6 +35,8 @@
 #include "GameToolbox/getTextureString.h"
 
 #include "ButtonSprite.h"
+#include "fmt/format.h"
+#include <algorithm>
 
 bool LevelPage::replacingScene = false;
 
@@ -42,7 +44,8 @@ bool LevelPage::init(GJGameLevel* level)
 {
 	if (!Layer::init()) return false;
 	
-	LevelPage::replacingScene = false;
+	if (!level)
+		return false;
 
 	//testing
 	//level->_normalPercent = static_cast<float>(GameToolbox::randomInt(0, 100));
@@ -56,85 +59,68 @@ bool LevelPage::init(GJGameLevel* level)
 
 	const auto& winSize = ax::Director::getInstance()->getWinSize();
 
-	//TODO: fix bars lol
-	auto normalBar = ax::Sprite::create(barTexture);
-	normalBar->setPosition({ winSize.width / 2, winSize.height / 2.f - 30 });
-	normalBar->setColor({0, 0, 0});
-	normalBar->setOpacity(125);
-	addChild(normalBar, 3);
+	auto addProgressBar = [&](float y, float percent, const char* title, const ax::Color3B& fillColor) {
+		percent = std::clamp(percent, 0.f, 100.f);
 
-	auto normalProgress = ax::Sprite::create(barTexture);
-	normalProgress->setPosition({1.36f, 10});
-	normalProgress->setColor({0, 255, 0});
-	normalProgress->setOpacity(255);
-	normalProgress->setAnchorPoint({0, 0.5});
-	normalProgress->setContentSize({340 / (level->_normalPercent / 100.f), 20});
-	normalProgress->setScale(0.992f);
-	normalProgress->setScaleX(0.992f);
-	normalProgress->setScaleY(0.86f);
-	normalBar->addChild(normalProgress);
+		auto* bar = ax::Sprite::create(barTexture);
+		if (!bar)
+			return;
+		bar->setPosition({winSize.width / 2.f, y});
+		bar->setColor({0, 0, 0});
+		bar->setOpacity(125);
+		addChild(bar, 3);
 
+		auto* fill = ax::Sprite::create(barTexture);
+		if (fill)
+		{
+			fill->setAnchorPoint({0.f, 0.5f});
+			fill->setPosition({1.36f, bar->getContentSize().height * 0.5f});
+			fill->setColor(fillColor);
+			fill->setTextureRect({0.f, 0.f,
+				bar->getContentSize().width * (percent / 100.f),
+				bar->getTextureRect().size.height});
+			fill->setScaleX(0.992f);
+			fill->setScaleY(0.86f);
+			bar->addChild(fill);
+		}
 
-	auto practiceBar = ax::Sprite::create(barTexture);
-	practiceBar->setPosition({ winSize.width / 2, winSize.height / 2.f - 80 });
-	practiceBar->setColor({0, 0, 0});
-	practiceBar->setOpacity(125);
-	addChild(practiceBar, 3);
+		auto* titleLabel = ax::Label::createWithBMFont(bigFontTexture, title);
+		titleLabel->setPosition({winSize.width / 2.f, y + 20.f});
+		titleLabel->setScale(0.55f);
+		addChild(titleLabel, 4);
 
-	auto practiceProgress = ax::Sprite::create(barTexture);
-	practiceProgress->setPosition({1.36f, 10});
-	practiceProgress->setColor({0, 255, 0});
-	practiceProgress->setOpacity(255);
-	practiceProgress->setAnchorPoint({0, 0.5});
-	practiceProgress->setContentSize({340 / (level->_normalPercent / 100.f), 20});
-	practiceProgress->setScale(0.992f);
-	practiceProgress->setScaleX(0.992f);
-	practiceProgress->setScaleY(0.86f);
-	practiceBar->addChild(practiceProgress);
+		auto* percLabel = ax::Label::createWithBMFont(bigFontTexture, fmt::format("{}%", static_cast<int>(percent)));
+		percLabel->setPosition({winSize.width / 2.f, y});
+		percLabel->enableShadow(ax::Color4B::BLACK, {0.2f, -0.2f});
+		percLabel->setScale(0.55f);
+		addChild(percLabel, 4);
+	};
 
-	auto normalText = ax::Label::createWithBMFont(bigFontTexture, "Normal Mode");
-	normalText->setPosition({ winSize.width / 2, winSize.height / 2.f - 10 });
-	// normalText->enableShadow(ax::Color4B::BLACK, {0.2, -0.2});
-	normalText->setScale(0.55f);
-	addChild(normalText, 4);
-
-	auto practiceText = ax::Label::createWithBMFont(bigFontTexture, "Practice Mode");
-	practiceText->setPosition({ winSize.width / 2, winSize.height / 2.f - 60 });
-	// practiceText->enableShadow(ax::Color4B::BLACK, {0.2, -0.2});
-	practiceText->setScale(0.55f);
-	addChild(practiceText, 4);
-
-	auto normalPerc = ax::Label::createWithBMFont(bigFontTexture, "");
-	normalPerc->setPosition({ winSize.width / 2, winSize.height / 2.f - 30 });
-	normalPerc->enableShadow(ax::Color4B::BLACK, {0.2f, -0.2f});
-	normalPerc->setString(fmt::format("{:.3}%", level->_normalPercent));
-	//normalPerc->setString(std::to_string((int)level->_normalPercent) + "%");
-	normalPerc->setScale(0.55f);
-	addChild(normalPerc, 4);
-
-	auto practicePerc = ax::Label::createWithBMFont(bigFontTexture, "");
-	practicePerc->setPosition({ winSize.width / 2, winSize.height / 2.f - 80 });
-	practicePerc->enableShadow(ax::Color4B::BLACK, {0.2f, -0.2f});
-	practicePerc->setString(fmt::format("{:.3}", level->_practicePercent));
-	practicePerc->setScale(0.55f);
-	addChild(practicePerc, 4);
+	addProgressBar(winSize.height / 2.f - 30.f, level->_normalPercent, "Normal Mode", {0, 255, 0});
+	addProgressBar(winSize.height / 2.f - 80.f, level->_practicePercent, "Practice Mode", {0, 255, 255});
 
 
 	
 	auto scale9 = ax::ui::Scale9Sprite::create("square02_001.png");
-	//scale9->setPosition({170, 47.5});
+	if (!scale9)
+		return false;
 	scale9->setContentSize({340, 95});
 	scale9->setOpacity(125);
 	
 	auto levelName = ax::Label::createWithBMFont(bigFontTexture, level->_levelName);
-	levelName->setPosition(190, 50.5);
-	levelName->setScale(0.904f);
-	scale9->addChild(levelName, 0);
+	if (levelName)
+	{
+		levelName->setPosition(190, 50.5);
+		levelName->setScale(0.904f);
+		scale9->addChild(levelName, 0);
+	}
 
-	auto diffIcon = ax::Sprite::createWithSpriteFrameName("diffIcon_01_btn_001.png");
-	diffIcon->setScale(1.1f);
-	diffIcon->setPosition(35.75, 50.5);
-	scale9->addChild(diffIcon, 0);
+	if (auto diffIcon = ax::Sprite::createWithSpriteFrameName(GJGameLevel::getDifficultySprite(level, kMainLevels)))
+	{
+		diffIcon->setScale(1.1f);
+		diffIcon->setPosition(35.75, 50.5);
+		scale9->addChild(diffIcon, 0);
+	}
 
 	//1.0 didnt have stars apparently
 	// auto starIcon = ax::Sprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
@@ -147,7 +133,7 @@ bool LevelPage::init(GJGameLevel* level)
 	// starAmt->setScale(0.5);
 	// starAmt->setAnchorPoint({1, 0.5});
 	// mainNode->addChild(starAmt, 0);
-	auto mainBtn = MenuItemSpriteExtra::create(scale9, AX_CALLBACK_1(LevelPage::onPlay, this));
+	auto mainBtn = MenuItemSpriteExtra::create(scale9, [this](Node* btn) { onPlay(btn); });
 	mainBtn->setScaleMultiplier(1.1f);
 	auto levelMenu = ax::Menu::create();
 	levelMenu->addChild(mainBtn);
@@ -177,12 +163,21 @@ void LevelPage::onPlay(Node* btn)
 	if (LevelPage::replacingScene)
 		return;
 
-	ax::Scene* scene = PlayLayer::scene(_level);
+	LevelPage::replacingScene = true;
+	GJGameLevel* level = _level;
+	_level = nullptr;
+
+	ax::Scene* scene = PlayLayer::scene(level);
 	ax::AudioEngine::stopAll();
 	ax::AudioEngine::play2d("playSound_01.ogg", false, 0.2f);
 	ax::Director::getInstance()->replaceScene(ax::TransitionFade::create(0.5f, scene));
-	LevelPage::replacingScene = true;
 	MenuLayer::music = false;
+}
+
+LevelPage::~LevelPage()
+{
+	delete _level;
+	_level = nullptr;
 }
 LevelPage* LevelPage::create(GJGameLevel* level)
 {

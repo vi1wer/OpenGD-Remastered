@@ -1,130 +1,81 @@
-<div align="center">
+﻿<div align="center">
 
-![issues](https://img.shields.io/github/issues/Open-GD/OpenGD?style=for-the-badge&color=blue)
-![forks](https://img.shields.io/github/forks/Open-GD/OpenGD?style=for-the-badge)
-![stars](https://img.shields.io/github/stars/Open-GD/OpenGD?style=for-the-badge&color=blue)
-![LICENSE](https://img.shields.io/github/license/Open-GD/OpenGD?style=for-the-badge&color=blue)
-<a href="https://discord.gg/gcbuuR4JWg">
-<img src="https://dcbadge.vercel.app/api/server/gcbuuR4JWg">
-</a>
+# OpenGD Remastered
+
+**A remastered fork of [OpenGD](https://github.com/Open-GD/OpenGD)** with bug fixes, gameplay improvements, UI work, and quality-of-life changes.
+
+[Repository](https://github.com/vi1wer/OpenGD-Remastered) · [Issues](https://github.com/vi1wer/OpenGD-Remastered/issues) · [Releases](https://github.com/vi1wer/OpenGD-Remastered/releases)
+
+![platform](https://img.shields.io/badge/platform-Windows-blue)
+![license](https://img.shields.io/badge/license-GPL--3.0-blue)
+![version](https://img.shields.io/badge/version-1.0.0-green)
+
 </div>
 
-<!-- PROJECT LOGO -->
-<br />
-<div align="center">
-  <a href="https://github.com/Open-GD/OpenGD/releases/latest">
-    <img src="https://user-images.githubusercontent.com/54410739/226145157-61edd6d9-eec4-479c-83b6-3f0c32e278c3.png" alt="Logo" width="80" height="80">
-  </a>
+## About
 
-  <h3 align="center">OpenGD</h3>
+OpenGD Remastered continues the open-source Geometry Dash client started by the OpenGD team. This fork focuses on making the game playable: official levels, menus closer to 2.2, garage / shop / creator UI, portals, orbs, triggers, practice mode, and many crash / collision fixes.
 
-  <p align="center">
-    Open source implementation of Geometry Dash
-    <br />   
-  </p>
-  
-![](https://img.shields.io/badge/platforms-windows%20%7C%20linux%20%7C%20mac%20%7C%20android%20%7C%20ios-blue)
-    <p align="center">
-    <a href="https://github.com/Open-GD/OpenGD/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/Open-GD/OpenGD/releases/latest">Latest Release</a>
- · 
- <a href="https://github.com/Open-GD/OpenGD/issues">Request Feature</a>
-  </p>
-</div>
-<!-- ABOUT THE PROJECT -->
-## About The Project
+Powered by [axmol](https://github.com/axmolengine/axmol).
 
-![Stereo Madness running in OpenGD](https://cdn.discordapp.com/attachments/847950548921614366/1086798200146497647/6046uyhlekoa1.png "OpenGD")
+**Version 1.0.0** — first public remaster release.
 
+## What's new vs upstream OpenGD
 
-OpenGD is an open-source implementation of the popular game Geometry Dash. Our main goal is to remake the gameplay 1:1, while also improving performance through new engine features and C++ enhancements. We also plan to implement multithreading in the future.
+- Playable official levels with many physics / collision fixes
+- Portals, orbs, pads, dual mode, dash, and expanded trigger support
+- Teleport portals (classic Y-offset behavior)
+- Slope collisions and decoration / no-touch handling
+- Main menu, Garage (icons + colors), Creator layout, Shop
+- Pause menu, practice checkpoints (Z / X), progress UI
+- Official level select page colors (`LevelSelectLayer::colorForPage` / `GameToolbox::colorForIdx`)
+- Broader object support and main-level rating icons
+- Debug options (hitboxes, progress overlays, and related toggles)
 
-## Status 
+See [CHANGELOG.md](CHANGELOG.md) for details.
 
-We are currently rewriting the gameplay from the ground up, **levels are not playable at the moment**.
+## Status
 
-### Built With
+Playable on Windows for local / official-style levels. Not a full Geometry Dash 2.2 clone — online features and some advanced systems are still incomplete.
 
-OpenGD is powered by [axmol](https://github.com/axmolengine/axmol), which is maintained a fork of cocos2dx 4.0 that adds many new features and improvements over the original cocos2dx. The original Geometry Dash is also made with cocos2dx, but with a much older version from 2014.
+## Requirements
 
-## Build instructions
+- Windows (primary target for 1.0)
+- CMake 3.20+
+- C++20 compiler (MSVC / VS 2022 recommended)
+- [axmol](https://github.com/axmolengine/axmol) (`AX_ROOT`)
+- Geometry Dash **2.2** `Resources` placed next to the built executable (same workflow as upstream OpenGD)
 
-Required:
-- Powershell
-- CMake
-- C++20 Compiler (MSVC, clang or gcc)
+## Build (Windows)
 
-
-<details>
-
-  <summary>Windows</summary>
-
-### Quick start
-
-Clone axmol, run setup.ps1 and restart cmd for command line variables to update
-```
+```powershell
 git clone https://github.com/axmolengine/axmol
 cd axmol
 ./setup.ps1
+# restart the terminal so AX_ROOT is available
+
+git clone https://github.com/vi1wer/OpenGD-Remastered.git
+cd OpenGD-Remastered
+cmake -B build
+cmake --build build --config RelWithDebInfo --target OpenGD
 ```
 
-In the OpenGD folder, build with cmake as usual
-```
-cmake -B build_x64
-cmake --build build_x64 --config RelWithDebInfo
-```
-
-> **Warning**
-> VS 2019 might not work on Windows, VS 2022 is recommended
-
-
-### Recommended setup: VSCode
-
-Required:
-  - Ninja
-  - clang (llvm)
-  - cmake-tools extension
-  - c/c++ extension
-
-Recommended: [sccache](https://github.com/mozilla/sccache) (faster re-builds)
-
-Make sure ninja and clang are on path!
-
-From cmake-tools select configuration `Ninja default` or `Ninja sccache`, then build with cmake-tools or `cmake --build build`.
-
-The VSCode setup provides support for intellisense and debugger (requires vs2022)
-
-</details>
-
-<details>
-
-<summary>Other platforms</summary>
-  
-Check axmol [Dev setup](https://github.com/axmolengine/axmol/blob/dev/docs/DevSetup.md)
-
-</details>
-
-To actually run the game you will need the resources from the 2.2/2.1 version of Geometry Dash.
-
-<!-- LICENSE -->
 ## License
 
-Distributed under the GPL v3 License . See `LICENSE` for more information.
+GPL-3.0 — see [LICENSE](LICENSE).
 
-<!-- ACKNOWLEDGMENTS -->
+Fork of [OpenGD](https://github.com/Open-GD/OpenGD); same license terms apply.
+
 ## Credits
 
-* [axmol](https://github.com/axmolengine/axmol) a fork of cocos2d-x-4.0
-* [GD 1.0 decomps](https://github.com/Wyliemaster/Geometry-Dash-1.0) by Wylie
-* [GD Physics decomps](https://github.com/camila314/gdp) by Camila
-* [GD 2.1 decomps](https://github.com/matcool/gd-decomps) by mat
-* [hps](https://github.com/jl2922/hps) high performance C++11 serialization library
-* [gdclone](https://github.com/opstic/gdclone) another gd reconstruction project
+- [OpenGD](https://github.com/Open-GD/OpenGD) and upstream contributors
+- [axmol](https://github.com/axmolengine/axmol)
+- [GD 1.0 decomps](https://github.com/Wyliemaster/Geometry-Dash-1.0) by Wylie
+- [GD Physics decomps](https://github.com/camila314/gdp) by Camila
+- [GD 2.1 decomps](https://github.com/matcool/gd-decomps) by mat
+- [hps](https://github.com/jl2922/hps)
+- [gdclone](https://github.com/opstic/gdclone)
 
-### Contributors
-This project exists thanks to all the people who have contributed:
+## Disclaimer
 
-<a href="https://github.com/Open-GD/OpenGD/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Open-GD/OpenGD" />
-</a>
+Unofficial fan project. Not affiliated with RobTop Games.

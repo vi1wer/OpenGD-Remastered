@@ -31,6 +31,7 @@ namespace ax
 
 namespace GameToolbox
 {
+	std::string getBoomlingsUrl(const std::string& endpoint);
 	std::optional<std::string> getResponse(ax::network::HttpResponse* response);
 	void executeHttpRequest(const std::string& url, const std::string& postData, ax::network::HttpRequest::Type type, const ax::network::ccHttpRequestCallback& callback);
 };

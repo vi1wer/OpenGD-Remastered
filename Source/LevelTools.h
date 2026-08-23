@@ -21,6 +21,8 @@
 #include <string>
 #include <string_view>
 
+class GJGameLevel;
+
 namespace LevelTools {
 	bool verifyLevelIntegrity(std::string_view levelData, int id);
 	
@@ -32,4 +34,7 @@ namespace LevelTools {
 	std::string getNgURLForArtist(int artistId);
 	std::string getYtURLForArtist(int artistId);
 	std::string getURLForAudio(int lid);
+
+	// Official RobTop main-level rating (stars / face / demon).
+	void applyMainLevelRating(GJGameLevel* level);
 }

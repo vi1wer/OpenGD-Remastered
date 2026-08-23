@@ -28,6 +28,7 @@
 namespace GameToolbox
 {
 ax::Color3B colorForIdx(int col);
+constexpr int colorForIdxCount() { return 107; }
 const char* getNameGamemode(IconType mode);
 int getValueForGamemode(IconType mode);
 ax::Color3B hsvToRgb(const ax::HSV& hsv);

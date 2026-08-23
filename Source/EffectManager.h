@@ -34,7 +34,10 @@ class EffectManager : public ax::Node
 
 		float _xAccel, _yAccel;
 
-		void runMoveCommand(float duration, ax::Point offsetPos, int easeType, float easeAmt, int groupID);
+		void runMoveCommand(float duration, ax::Point offsetPos, int easeType, float easeAmt, int groupID,
+							bool lockToPlayerX = false, bool lockToPlayerY = false);
+		void runFollowCommand(float duration, int groupID, bool followX, bool followY);
+		void stopGroupActions(int groupID);
 
 		void prepareMoveActions(float dt, bool idk);
 

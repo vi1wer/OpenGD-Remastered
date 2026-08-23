@@ -51,6 +51,7 @@ private:
 	
 public:
 	void loadLoadingLayer();
+	bool tryLoadFromResourcesPath(const std::string& resourcesPath, bool persist);
 	bool init();
 	static ResourcesLoadingLayer* create();
 	static ax::Scene* scene();

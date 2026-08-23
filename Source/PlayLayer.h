@@ -18,29 +18,53 @@
 
 #pragma once
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "EventKeyboard.h"
 #include "BaseGameLayer.h"
-
-
-enum PlayerGamemode;
+#include "PlayerObject.h"
+#include "math/Vec2.h"
 
 class GJGameLevel;
 class GameObject;
 class SimpleProgressBar;
 class UILayer;
-class PlayerObject;
 class GroundLayer;
 class MenuItemSpriteExtra;
+class PauseLayer;
 
-namespace ax 
-{ 
-	class Event; 
+namespace ax
+{
+	class Event;
 	class Sprite;
 	class Label;
+	class Node;
 }
 
+struct PracticeCheckpoint
+{
+	ax::Vec2 pos1;
+	ax::Vec2 pos2;
+	ax::Vec2 camPos;
+	float rot1 = 0.f;
+	float rot2 = 0.f;
+	double yVel1 = 0.0;
+	double yVel2 = 0.0;
+	double xVel1 = 5.77;
+	double xVel2 = 5.77;
+	float speed1 = 0.9f;
+	float speed2 = 0.9f;
+	bool gravity1 = false;
+	bool gravity2 = false;
+	bool mini1 = false;
+	bool mini2 = false;
+	bool dual = false;
+	PlayerGamemode gamemode1 = PlayerGamemodeCube;
+	PlayerGamemode gamemode2 = PlayerGamemodeCube;
+	float songTime = 0.f;
+	ax::Sprite* sprite = nullptr;
+};
 
 class PlayLayer : public BaseGameLayer
 {
@@ -68,9 +92,11 @@ protected:
 
 	float m_fCameraYCenter;
 	float m_lastObjXPos = 570.0f;
+	float _lastTriggerScanX = -30.f;
 	bool m_bFirstAttempt = true;
 	bool m_bMoveCameraX;
 	bool m_bMoveCameraY;
+	bool _editorVisibilityAllSections = false;
 	bool m_bShakingCamera;
 	float m_fEndOfLevel = FLT_MAX;
 	float m_fShakeIntensity = 1;
@@ -102,10 +128,29 @@ public:
 	bool _testMode;
 
 	std::vector<bool> _coinsCollected;
+	std::vector<ax::Sprite*> _coinHUD;
+	ax::Node* _newBestBanner = nullptr;
 
 	bool _isDualMode;
+	bool _isPaused = false;
+	bool _isPracticeMode = false;
+	PauseLayer* _pauseLayer = nullptr;
+	int _musicAudioId = -1;
+	std::vector<PracticeCheckpoint> _checkpoints;
+	float _lastAutoCheckpointX = -9999.f;
+	bool _freezeHitboxesOnDeath = false;
+	bool _isMirror = false;
+	float _shakeTime = 0.f;
+	float _shakeStrength = 0.f;
+	std::unordered_map<int, int> _itemCounts;
 
 	virtual void destroyPlayer(PlayerObject* player);
+	void pickupCoin(GameObject* obj, PlayerObject* player);
+	void setupCoinHUD();
+	void refreshCoinHUD();
+	void showNewBest(int percent);
+	int currentPercent() const;
+	void recordAttemptProgress(bool completed);
 
 	void loadLevel(std::string_view levelStr);
 
@@ -115,14 +160,29 @@ public:
 
 	void update(float delta) override;
 	virtual void updateCamera(float dt);
-	void updateVisibility();
+	virtual void updateVisibility();
 	void moveCameraToPos(ax::Vec2);
 	void changeGameMode(GameObject* obj, PlayerObject* player, PlayerGamemode gameMode);
+	void setDualMode(bool dual);
+	void applyLevelStartGamemode(PlayerObject* player, PlayerGamemode mode);
 	virtual void resetLevel();
 	void exit();
+	void pauseGame();
+	void resumeGame();
+	void togglePracticeMode();
+	void markCheckpoint();
+	void removeCheckpoint();
+	void clearCheckpoints();
+	void applyCheckpoint(const PracticeCheckpoint& checkpoint);
+	void applyMusicVolume();
+	void applyHudVisibility();
+	bool isPaused() const { return _isPaused; }
+	bool isPracticeMode() const { return _isPracticeMode; }
 
 	void tweenBottomGround(float y);
 	void tweenCeiling(float y);
+	float flyingFloorY(const PlayerObject* player) const;
+	float flyingCeilY(const PlayerObject* player) const;
 
 	// dt?
 	void checkCollisions(PlayerObject* player, float delta);
@@ -135,6 +195,12 @@ public:
 
 	void changePlayerSpeed(int speed);
 	void changeGravity(bool gravityFlipped);
+	void setMirror(bool mirror);
+	void spiderTeleport(PlayerObject* player);
+	void teleportPlayer(PlayerObject* player, GameObject* from);
+	GameObject* findTeleportDestination(GameObject* src);
+	void fireOnDeathTriggers();
+	bool tryActivateCountTrigger(class EffectGameObject* trigger);
 
 	void incrementTime();
 

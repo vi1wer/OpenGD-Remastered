@@ -25,7 +25,6 @@
 #include "LevelBrowserLayer.h"
 #include "2d/Menu.h"
 #include "GJSearchObject.h"
-#include "Object.h"
 #include "TextInputNode.h"
 #include "2d/Transition.h"
 #include "EventListenerKeyboard.h"
@@ -126,12 +125,12 @@ bool LevelSearchLayer::init()
 	addChild(_searchObject);
 
 	auto menuSearch = Menu::create();
-	auto searchBtn = MenuItemSpriteExtra::create(searchButton("GJ_longBtn02_001.png", "Search", 0.6, ""), AX_CALLBACK_1(LevelSearchLayer::onSearch, this));
+	auto searchBtn = MenuItemSpriteExtra::create(searchButton("GJ_longBtn02_001.png", "Search", 0.6, ""), [this](Node* btn) { onSearch(btn); });
 
 	searchBtn->setPosition(menuSearch->convertToNodeSpace({ searchPos.x + 84.0f, searchPos.y }));
 	menuSearch->addChild(searchBtn);
 
-	auto searchProfileBtn = MenuItemSpriteExtra::create("GJ_longBtn05_001.png", AX_CALLBACK_1(LevelSearchLayer::onSearchProfile, this));
+	auto searchProfileBtn = MenuItemSpriteExtra::create("GJ_longBtn05_001.png", [this](Node* btn) { onSearchProfile(btn); });
 	searchProfileBtn->setPosition(menuSearch->convertToNodeSpace({ searchPos.x + 156.0f, searchPos.y }));
 	menuSearch->addChild(searchProfileBtn);
 	this->addChild(menuSearch);
@@ -254,7 +253,7 @@ bool LevelSearchLayer::init()
 
 		auto diff_sprite = Sprite::createWithSpriteFrameName(texture_name);
 
-		auto diff_spriteextra = MenuItemSpriteExtra::create(diff_sprite, AX_CALLBACK_1(LevelSearchLayer::toggleDifficulty, this));
+		auto diff_spriteextra = MenuItemSpriteExtra::create(diff_sprite, [this](Node* ref) { toggleDifficulty(ref); });
 		diff_spriteextra->setColor(UNSELECTED_COLOR);
 		diff_spriteextra->setTag(i);
 		diff_spriteextra->setScale(0.8f);
@@ -299,7 +298,7 @@ bool LevelSearchLayer::init()
 	for (int i = 0; i < 5; ++i)
 	{
 		const char* length = GameToolbox::levelLengthString(i);
-		auto label = MenuItemLabel::create(Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"), length, TextHAlignment::CENTER), AX_CALLBACK_1(LevelSearchLayer::toggleTime, this));
+		auto label = MenuItemLabel::create(Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"), length, TextHAlignment::CENTER), [this](Ref* btn) { toggleTime(btn); });
 		label->setColor(UNSELECTED_COLOR);
 		label->setScale(0.5f);
 		label->setTag(i);
@@ -363,7 +362,7 @@ void LevelSearchLayer::onSearchProfile(Node* btn)
 
 
 
-void LevelSearchLayer::toggleTime(ax::Object* btn)
+void LevelSearchLayer::toggleTime(Ref* btn)
 {
 	auto label = dynamic_cast<MenuItemLabel*>(btn);
 
@@ -381,9 +380,9 @@ void LevelSearchLayer::toggleTime(ax::Object* btn)
 	}
 }
 
-void LevelSearchLayer::toggleDifficulty(ax::Object* ref)
+void LevelSearchLayer::toggleDifficulty(Node* ref)
 {
-	auto btn = dynamic_cast<ax::Node*>(ref);
+	auto btn = ref;
 
 	int tag = btn->getTag();
 

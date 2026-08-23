@@ -17,7 +17,7 @@
 *************************************************************************/
 
 #include "TextInputNode.h"
-#include "Object.h"
+#include "base/Ref.h"
 
 #include <fmt/format.h>
 #include <EventListenerTouch.h>
@@ -96,7 +96,7 @@ bool TextInputNode::init(float width, float height, std::string_view placeholder
 	}
 
 	auto touchListener = EventListenerTouchOneByOne::create();
-	_textField->addEventListener([&](ax::Object* re, ui::TextField::EventType event)
+	_textField->addEventListener([&](Ref* re, ui::TextField::EventType event)
 		{
 			switch (event)
 			{

@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <string>
 #include <string_view>
 #include <vector>
 #include <unordered_map>
@@ -78,7 +79,10 @@ enum GameObjectType
 	kGameObjectTypeDashRing = 37,
 	kGameObjectTypeGravityDashRing = 38,
 	kGameObjectTypeCollisionObject = 39,
-	kGameObjectTypeSpecial = 40
+	kGameObjectTypeSpecial = 40,
+	kGameObjectTypeSwingPortal = 41,
+	kGameObjectTypeSpiderPad = 42,
+	kGameObjectTypeSpiderRing = 43
 };
 
 struct Hitbox
@@ -90,15 +94,17 @@ class GameObject : public ax::Sprite, public ax::ActionTweenDelegate
 {
   private:
 	ax::Rect _pOuterBounds;
+	Hitbox _collisionHitbox{};
+	bool _hasCollisionHitbox = false;
 	ax::Rect _pInnerBounds;
 
 	int m_pId;
 
-	bool m_bActive;
+	bool m_bActive = false;
 
 	bool _primaryInvisible; //needed because robtop
 
-	GameObjectType _pObjectType;
+	GameObjectType _pObjectType = kGameObjectTypeDecoration;
 
 	int _pColorRed;
 	int _pColorGreen;
@@ -158,22 +164,35 @@ class GameObject : public ax::Sprite, public ax::ActionTweenDelegate
 	int _enterEffectID = 0;
 
 	bool _dontTransform = false;
+	bool _isNoTouch = false;
 
 	void setEnterEffectID(int id) { _enterEffectID = id; }
 
 	int getEnterEffectID() { return _enterEffectID; }
 
-	bool _hasBeenActivatedP1, _hasBeenActivatedP2;
+	bool _hasBeenActivatedP1 = false;
+	bool _hasBeenActivatedP2 = false;
 	int _mainColorChannel = -1, _secColorChannel = -1;
 
-	SpriteColor* _mainColor, * _secColor;
+	SpriteColor* _mainColor = nullptr;
+	SpriteColor* _secColor = nullptr;
 
-	bool _hasGlow, _hasParticle;
-	bool _isTrigger;
+	bool _hasGlow = false;
+	bool _hasParticle = false;
+	bool _isTrigger = false;
+	bool _animateOnTrigger = false;
+	bool _hasIdleAnim = false;
+	std::string _particleData;
 
 	bool _toggledOn = true;
 
 	bool _isOnlyDetail = false;
+
+	// Slope orientation (matches RobTop determineSlopeDirection / slopeYPos).
+	bool _slopeUphill = true;
+	bool _slopeFloorTop = false;
+	bool _slopeIsHazard = false;
+	int _slopeDirection = 0;
 
 	bool _mainHSVEnabled, _secondaryHSVEnabled;
 	GDHSV _mainHSV, _secondaryHSV;
@@ -182,12 +201,18 @@ class GameObject : public ax::Sprite, public ax::ActionTweenDelegate
 
 	int _uniqueID = -1;
 	int _section = -1;
+	int _linkedGroupId = -1;
+	int _teleportTargetGroupId = -1;
+	int _coinIndex = -1;
 
 	float _radius = -1;
+	float _teleportYOffset = 0.f;
+	bool _teleportIgnoreX = false;
+	bool _teleportIgnoreY = false;
 
 	ax::Mat4 _parentMatrix = ax::Mat4::IDENTITY;
 
-	ax::ParticleSystemQuad* _particle;
+	ax::ParticleSystemQuad* _particle = nullptr;
 
 	static const std::unordered_map<int, Hitbox, my_string_hash> _pHitboxes;
 	static const std::unordered_map<int, float, my_string_hash> _pHitboxRadius;
@@ -203,19 +228,36 @@ class GameObject : public ax::Sprite, public ax::ActionTweenDelegate
 	bool init(std::string_view frame, std::string_view glowFrame = "");
 
 	void customSetup();
+	void startCoinAnimation();
+	void startIdleAnimation();
+	bool isCoin() const;
+	bool wantsCollisionBounds() const;
+	void applyLoadedHitbox(Hitbox hb);
+	void refreshCollisionBounds();
+	static Hitbox resolveObjectHitbox(int objectID, GameObject* obj);
 	void addCustomSprites(nlohmann::json j, ax::Sprite* parent);
 	void applyColorChannel(ax::Sprite* sprite, int channelType, float opacityMultiplier, SpriteColor *col);
 	ax::Color3B getChannelColor(SpriteColor* colorChannel);
 
 	static std::string keyToFrame(int key);
+	static std::string_view getBlockFrame(int objectID);
+	static bool isTriggerID(int objectID);
+	static bool isSlopeFrame(std::string_view frame);
+	static bool isPassableDecorationFrame(std::string_view frame);
+	static Hitbox resolveHitbox(int objectID);
+	void determineSlopeDirection();
+	bool slopeFloorTop() const { return _slopeFloorTop; }
+	bool isSlopeUphill() const { return _slopeUphill; }
+	bool isSlopeHazard() const { return _slopeIsHazard; }
+	float getSlopeAngle() const;
+	double slopeYPos(float playerX) const;
 	static std::map<std::string, std::string> stringSetupToDict(std::string);
 
 	float getRadius() { return _radius * getScale(); }
 
 	void setOuterBounds(const ax::Rect& value) { _pOuterBounds = value; }
 
-	ax::Rect getOuterBounds() { return _pOuterBounds; }
-
+	ax::Rect getOuterBounds() const { return _pOuterBounds; }
 	ax::Rect getOuterBounds(float a, float b);
 
 	void setInnerBounds(const ax::Rect& value) { _pInnerBounds = value; }
@@ -256,6 +298,8 @@ class GameObject : public ax::Sprite, public ax::ActionTweenDelegate
 	void setDuration(float dura) { _pDuration = dura; }
 
 	void createAndAddParticle(const char* particle, int a3);
+	void setupCustomParticle(std::string_view data = {});
+	void applyParticleTexture(ax::ParticleSystemQuad* particle);
 
 	bool getDontTransform() { return _dontTransform; }
 

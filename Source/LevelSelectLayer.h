@@ -30,11 +30,11 @@ namespace ax
 
 class LevelSelectLayer : public ax::Layer {
 private:
-	ax::Sprite* _background;
-	GroundLayer* _ground;
+	ax::Sprite* _background = nullptr;
+	GroundLayer* _ground = nullptr;
 	std::vector<Layer*> _levelPages;
 public:
-	BoomScrollLayer* _bsl;
+	BoomScrollLayer* _bsl = nullptr;
 
 public:
 
@@ -42,4 +42,7 @@ public:
 	bool init(int page);
 	static LevelSelectLayer* create(int page);
 	void onExit() override;
+
+	static ax::Color3B colorForPage(int page);
+	void applyPageColor(int page, bool animate);
 };

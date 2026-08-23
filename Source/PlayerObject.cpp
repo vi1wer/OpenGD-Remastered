@@ -17,17 +17,28 @@
 *************************************************************************/
 
 #include "PlayerObject.h"
+#include "AnimatedIconSprite.h"
+#include "HardStreak.h"
 #include "AudioEngine.h"
 
 #include "PlayLayer.h"
+#include "GameManager.h"
 #include "2d/ParticleSystem.h"
 #include "2d/ParticleSystemQuad.h"
 #include "2d/ActionInstant.h"
+#include "2d/ActionInterval.h"
 #include "2d/ActionEase.h"
+#include "base/Director.h"
+#include "renderer/TextureCache.h"
 #include "CircleWave.h"
 #include "UTF8.h"
+#include "GameToolbox/conv.h"
+#include "GameToolbox/rand.h"
+#include "GameToolbox/enums.h"
 #include "GameToolbox/log.h"
 #include "GameToolbox/math.h"
+#include <algorithm>
+#include <cmath>
 
 USING_NS_AX;
 
@@ -43,9 +54,24 @@ void PlayerObject::reset()
 	m_isRising = false;
 	m_bIsHolding = false;
 	_touchedRingObject = nullptr;
+	_isAccelerating = false;
+	_shipRotationPosValid = false;
+	_isOnSlope = false;
+	_wasOnSlope = false;
+	_currentSlope = nullptr;
+	_slopeRotation = 0.f;
+	_slopeVelocity = 0.f;
+	_slopeStartTime = 0.f;
+	_totalTime = 0.f;
+	_slopeUphillContact = false;
 	stopActionByTag(0);
 	stopActionByTag(1);
 	_hasRingJumped = false;
+	_isDashing = false;
+	_spiderTeleportQueued = false;
+	_queuedHold = false;
+	_jumpedTimes = 0;
+	_lastP = getPosition();
 
 	dragEffect1->pauseEmissions();
 	dragEffect2->pauseEmissions();
@@ -61,18 +87,110 @@ void PlayerObject::reset()
 	deactivateStreak();
 }
 
-void PlayerObject::playDeathEffect()
+void PlayerObject::playDeathEffect(bool stopMusic)
 {
-	AudioEngine::stopAll();
-	AudioEngine::play2d("explode_11.ogg", false, 0.1f);
-	dragEffect1->pauseEmissions();
-	getPlayLayer()->unscheduleUpdate();
+	if (stopMusic)
+		AudioEngine::stopAll();
+	AudioEngine::play2d("explode_11.ogg", false, 0.8f);
+
+	auto pauseParticle = [](ParticleSystemQuad* ps) {
+		if (ps)
+			ps->pauseEmissions();
+	};
+	pauseParticle(dragEffect1);
+	pauseParticle(dragEffect2);
+	pauseParticle(dragEffect3);
+	pauseParticle(shipDragEffect);
+	pauseParticle(landEffect1);
+	pauseParticle(landEffect2);
+	deactivateStreak();
+
+	setVisible(false);
+
+	auto* layer = gameLayer;
+	if (!layer)
+		return;
+
+	const Vec2 pos = getPosition();
+	const Color3B main = getMainColor();
+	const Color3B sec = getSecondaryColor();
+	auto* cache = Director::getInstance()->getTextureCache();
+	auto* square = cache ? cache->addImage("square.png") : nullptr;
+
+	auto spawnBurst = [&](const Color3B& color, float scale, int z) {
+		auto* burst = ParticleSystemQuad::create("explodeEffect.plist");
+		if (!burst)
+			return;
+		if (square)
+			burst->setTexture(square);
+		burst->setPosition(pos);
+		burst->setPositionType(ParticleSystem::PositionType::GROUPED);
+		burst->setScale(scale);
+		burst->setLife(0.4f);
+		burst->setLifeVar(0.25f);
+		burst->setStartColor(Color4F(color.r / 255.f, color.g / 255.f, color.b / 255.f, 1.f));
+		burst->setStartColorVar(Color4F(0.08f, 0.08f, 0.08f, 0.15f));
+		burst->setEndColor(Color4F(color.r / 255.f, color.g / 255.f, color.b / 255.f, 0.f));
+		burst->setEndColorVar(Color4F(0.f, 0.f, 0.f, 0.f));
+		burst->setAutoRemoveOnFinish(true);
+		burst->resetSystem();
+		layer->addChild(burst, z);
+	};
+
+	spawnBurst(main, 1.f, 200);
+	spawnBurst(sec, 0.65f, 199);
+
+	if (auto* ring = CircleWave::create(0.45f, Color4B(main.r, main.g, main.b, 255), 6.f, 80.f, true, false, 3.f))
+	{
+		ring->setPosition(pos);
+		layer->addChild(ring, 198);
+	}
+	if (auto* ring2 = CircleWave::create(0.6f, Color4B(sec.r, sec.g, sec.b, 220), 4.f, 130.f, true, false, 2.f))
+	{
+		ring2->setPosition(pos);
+		layer->addChild(ring2, 197);
+	}
 }
 
-bool PlayerObject::init(int playerFrame, Layer* gameLayer_)
+namespace
 {
-	// cap the icon limit
-	int frame = GameToolbox::inRange(playerFrame, 1, 13);
+Sprite* createIconFrame(const std::string& frameName, const char* fallback)
+{
+	Sprite* spr = Sprite::createWithSpriteFrameName(frameName);
+	if (!spr && fallback)
+		spr = Sprite::createWithSpriteFrameName(fallback);
+	return spr;
+}
+
+int clampIconId(IconType mode, int iconId)
+{
+	const int maxIcon = GameToolbox::getValueForGamemode(mode);
+	return GameToolbox::inRange(iconId, 1, maxIcon > 0 ? maxIcon : 1);
+}
+
+} // namespace
+
+bool PlayerObject::init(int playerFrame, Layer* gameLayer_, bool menuRandomIcons)
+{
+	if (!Sprite::init())
+		return false;
+
+	auto gm = GameManager::getInstance();
+	auto pickIcon = [&](IconType mode, int fallback) -> int {
+		if (menuRandomIcons)
+		{
+			const int maxIcon = GameToolbox::getValueForGamemode(mode);
+			return GameToolbox::randomInt(1, maxIcon > 0 ? maxIcon : 1);
+		}
+		return clampIconId(mode, mode == IconType::kIconTypeCube ? fallback : gm->getSelectedIcon(mode));
+	};
+
+	const int frame = pickIcon(IconType::kIconTypeCube, playerFrame);
+	const int shipId = pickIcon(IconType::kIconTypeShip, 1);
+	const int ballId = pickIcon(IconType::kIconTypeBall, 1);
+	const int ufoId = pickIcon(IconType::kIconTypeUfo, 1);
+	const int waveId = pickIcon(IconType::kIconTypeWave, 1);
+	const int swingId = pickIcon(IconType::kIconTypeSwing, 1);
 
 	auto sprStr1 = StringUtils::format("player_%02d_001.png", frame);
 	auto sprStr2 = StringUtils::format("player_%02d_2_001.png", frame);
@@ -83,53 +201,187 @@ bool PlayerObject::init(int playerFrame, Layer* gameLayer_)
 	// Check if layer is playlayer
 	inPlayLayer = dynamic_cast<PlayLayer*>(gameLayer_) != nullptr;
 
-	setTextureRect(Rect(0, 0, 30, 30)); // player hitbox lol
+	// PlayerObject is only a transform/container. Giving it a texture rect makes
+	// Axmol render the default white texture behind the actual icon sprites.
+	setContentSize({30.f, 30.f});
+	setAnchorPoint({0.5f, 0.5f});
 
-	m_pMainSprite = Sprite::createWithSpriteFrameName(sprStr1);
+	m_pMainSprite = createIconFrame(sprStr1, "player_01_001.png");
+	if (!m_pMainSprite)
+		return false;
 	m_pMainSprite->setStretchEnabled(false);
+	m_pMainSprite->setPosition({15.f, 15.f});
 	addChild(m_pMainSprite, 1);
 
-	m_pSecondarySprite = Sprite::createWithSpriteFrameName(sprStr2);
-	m_pSecondarySprite->setStretchEnabled(false);
-	m_pMainSprite->addChild(m_pSecondarySprite, -1);
-	m_pSecondarySprite->setPosition(m_pMainSprite->getContentSize() / 2.f);
+	m_pSecondarySprite = createIconFrame(sprStr2, "player_01_2_001.png");
+	if (m_pSecondarySprite)
+	{
+		m_pSecondarySprite->setStretchEnabled(false);
+		m_pMainSprite->addChild(m_pSecondarySprite, -1);
+		m_pSecondarySprite->setPosition(m_pMainSprite->getContentSize() / 2.f);
+	}
 
-	m_pShipSprite = Sprite::createWithSpriteFrameName("ship_01_001.png");
+	auto attachGlow = [](Sprite* parent, const std::string& frame) -> Sprite* {
+		if (!parent)
+			return nullptr;
+		Sprite* glow = createIconFrame(frame, nullptr);
+		if (!glow)
+			return nullptr;
+		glow->setStretchEnabled(false);
+		glow->setBlendFunc(GameToolbox::getBlending());
+		glow->setPosition(parent->getContentSize() / 2.f);
+		glow->setVisible(false);
+		parent->addChild(glow, -2);
+		return glow;
+	};
+
+	m_pMainGlowSprite = attachGlow(m_pMainSprite, StringUtils::format("player_%02d_glow_001.png", frame));
+	if (!m_pMainGlowSprite)
+		m_pMainGlowSprite = attachGlow(m_pMainSprite, "player_01_glow_001.png");
+
+	m_pShipSprite = createIconFrame(StringUtils::format("ship_%02d_001.png", shipId), "ship_01_001.png");
+	if (!m_pShipSprite)
+		return false;
 	m_pShipSprite->setStretchEnabled(false);
 	m_pShipSprite->setVisible(false);
-	m_pShipSprite->setPosition({0, -5});
+	m_pShipSprite->setPosition({15.f, 10.f});
 	addChild(m_pShipSprite, 2);
 
-	m_pShipSecondarySprite = Sprite::createWithSpriteFrameName("ship_01_2_001.png");
-	m_pShipSecondarySprite->setStretchEnabled(false);
-	m_pShipSprite->addChild(m_pShipSecondarySprite, -1);
-	m_pShipSecondarySprite->setPosition(m_pShipSprite->getContentSize() / 2.f);
+	m_pShipSecondarySprite = createIconFrame(StringUtils::format("ship_%02d_2_001.png", shipId), "ship_01_2_001.png");
+	if (m_pShipSecondarySprite)
+	{
+		m_pShipSecondarySprite->setStretchEnabled(false);
+		m_pShipSprite->addChild(m_pShipSecondarySprite, -1);
+		m_pShipSecondarySprite->setPosition(m_pShipSprite->getContentSize() / 2.f);
+	}
 
-	_ballSprite = Sprite::createWithSpriteFrameName("player_ball_01_001.png");
+	m_pShipGlowSprite = attachGlow(m_pShipSprite, StringUtils::format("ship_%02d_glow_001.png", shipId));
+	if (!m_pShipGlowSprite)
+		m_pShipGlowSprite = attachGlow(m_pShipSprite, "ship_01_glow_001.png");
+
+	_ballSprite = createIconFrame(StringUtils::format("player_ball_%02d_001.png", ballId), "player_ball_01_001.png");
+	if (!_ballSprite)
+		return false;
 	_ballSprite->setStretchEnabled(false);
 	_ballSprite->setVisible(false);
+	_ballSprite->setPosition({15.f, 15.f});
 	addChild(_ballSprite, 1);
 
-	_ballSecondarySprite = Sprite::createWithSpriteFrameName("player_ball_01_2_001.png");
-	_ballSecondarySprite->setStretchEnabled(false);
-	_ballSprite->addChild(_ballSecondarySprite, -1);
-	_ballSecondarySprite->setPosition(_ballSprite->getContentSize() / 2.f);
+	_ballSecondarySprite = createIconFrame(StringUtils::format("player_ball_%02d_2_001.png", ballId), "player_ball_01_2_001.png");
+	if (_ballSecondarySprite)
+	{
+		_ballSecondarySprite->setStretchEnabled(false);
+		_ballSprite->addChild(_ballSecondarySprite, -1);
+		_ballSecondarySprite->setPosition(_ballSprite->getContentSize() / 2.f);
+	}
 
-	_ufoSprite = Sprite::createWithSpriteFrameName("bird_01_001.png");
+	_ballGlowSprite = attachGlow(_ballSprite, StringUtils::format("player_ball_%02d_glow_001.png", ballId));
+	if (!_ballGlowSprite)
+		_ballGlowSprite = attachGlow(_ballSprite, "player_ball_01_glow_001.png");
+
+	_ufoSprite = createIconFrame(StringUtils::format("bird_%02d_001.png", ufoId), "bird_01_001.png");
+	if (!_ufoSprite)
+		return false;
 	_ufoSprite->setStretchEnabled(false);
 	_ufoSprite->setVisible(false);
-	_ufoSprite->setPositionY(-7);
+	_ufoSprite->setPosition({15.f, 8.f});
 	addChild(_ufoSprite, 1);
 
-	_ufoSecondarySprite = Sprite::createWithSpriteFrameName("bird_01_2_001.png");
-	_ufoSecondarySprite->setStretchEnabled(false);
-	_ufoSprite->addChild(_ufoSecondarySprite, -1);
-	_ufoSecondarySprite->setPosition(_ufoSprite->getContentSize() / 2.f);
+	_ufoSecondarySprite = createIconFrame(StringUtils::format("bird_%02d_2_001.png", ufoId), "bird_01_2_001.png");
+	if (_ufoSecondarySprite)
+	{
+		_ufoSecondarySprite->setStretchEnabled(false);
+		_ufoSprite->addChild(_ufoSecondarySprite, -1);
+		_ufoSecondarySprite->setPosition(_ufoSprite->getContentSize() / 2.f);
+	}
 
-	_ufoTertiarySprite = Sprite::createWithSpriteFrameName("bird_01_3_001.png");
-	_ufoTertiarySprite->setStretchEnabled(false);
-	_ufoSprite->addChild(_ufoTertiarySprite, -2);
-	_ufoTertiarySprite->setPosition(_ufoSprite->getContentSize() / 2.f);
+	_ufoTertiarySprite = createIconFrame(StringUtils::format("bird_%02d_3_001.png", ufoId), "bird_01_3_001.png");
+	if (_ufoTertiarySprite)
+	{
+		_ufoTertiarySprite->setStretchEnabled(false);
+		_ufoSprite->addChild(_ufoTertiarySprite, -2);
+		_ufoTertiarySprite->setPosition(_ufoSprite->getContentSize() / 2.f);
+	}
+
+	_ufoGlowSprite = attachGlow(_ufoSprite, StringUtils::format("bird_%02d_glow_001.png", ufoId));
+	if (!_ufoGlowSprite)
+		_ufoGlowSprite = attachGlow(_ufoSprite, "bird_01_glow_001.png");
+
+	auto attachExtra = [](Sprite* parent, const std::string& frame) {
+		if (!parent)
+			return;
+		Sprite* extra = createIconFrame(frame, nullptr);
+		if (!extra)
+			return;
+		extra->setStretchEnabled(false);
+		extra->setPosition(parent->getContentSize() / 2.f);
+		parent->addChild(extra, 1);
+	};
+
+	_waveSprite = createIconFrame(StringUtils::format("dart_%02d_001.png", waveId), "dart_01_001.png");
+	if (_waveSprite)
+	{
+		_waveSprite->setStretchEnabled(false);
+		_waveSprite->setVisible(false);
+		_waveSprite->setPosition({15.f, 15.f});
+		addChild(_waveSprite, 1);
+
+		_waveSecondarySprite = createIconFrame(StringUtils::format("dart_%02d_2_001.png", waveId), "dart_01_2_001.png");
+		if (_waveSecondarySprite)
+		{
+			_waveSecondarySprite->setStretchEnabled(false);
+			_waveSprite->addChild(_waveSecondarySprite, -1);
+			_waveSecondarySprite->setPosition(_waveSprite->getContentSize() / 2.f);
+		}
+
+		_waveGlowSprite = attachGlow(_waveSprite, StringUtils::format("dart_%02d_glow_001.png", waveId));
+		if (!_waveGlowSprite)
+			_waveGlowSprite = attachGlow(_waveSprite, "dart_01_glow_001.png");
+		attachExtra(_waveSprite, StringUtils::format("dart_%02d_extra_001.png", waveId));
+	}
+
+	_swingSprite = createIconFrame(StringUtils::format("swing_%02d_001.png", swingId), "swing_01_001.png");
+	if (_swingSprite)
+	{
+		_swingSprite->setStretchEnabled(false);
+		_swingSprite->setVisible(false);
+		_swingSprite->setPosition({15.f, 15.f});
+		addChild(_swingSprite, 1);
+
+		_swingSecondarySprite = createIconFrame(StringUtils::format("swing_%02d_2_001.png", swingId), "swing_01_2_001.png");
+		if (_swingSecondarySprite)
+		{
+			_swingSecondarySprite->setStretchEnabled(false);
+			_swingSprite->addChild(_swingSecondarySprite, -1);
+			_swingSecondarySprite->setPosition(_swingSprite->getContentSize() / 2.f);
+		}
+
+		_swingGlowSprite = attachGlow(_swingSprite, StringUtils::format("swing_%02d_glow_001.png", swingId));
+		if (!_swingGlowSprite)
+			_swingGlowSprite = attachGlow(_swingSprite, "swing_01_glow_001.png");
+		attachExtra(_swingSprite, StringUtils::format("swing_%02d_extra_001.png", swingId));
+	}
+
+	const int robotId = pickIcon(IconType::kIconTypeRobot, 1);
+	_robotSprite = AnimatedIconSprite::create(IconType::kIconTypeRobot, robotId);
+	if (_robotSprite)
+	{
+		_robotSprite->setPosition({15.f, 15.f});
+		_robotSprite->setVisible(false);
+		addChild(_robotSprite, 1);
+	}
+
+	const int spiderId = pickIcon(IconType::kIconTypeSpider, 1);
+	_spiderSprite = AnimatedIconSprite::create(IconType::kIconTypeSpider, spiderId);
+	if (_spiderSprite)
+	{
+		_spiderSprite->setPosition({15.f, 15.f});
+		_spiderSprite->setVisible(false);
+		addChild(_spiderSprite, 1);
+	}
+
+	setGlowColor(gm->getPlayerGlowColor());
+	setGlow(gm->isPlayerGlowEnabled());
 
 	// particles
 	auto image = new Image();
@@ -192,15 +444,13 @@ bool PlayerObject::init(int playerFrame, Layer* gameLayer_)
 
 	gameLayer->addChild(landEffect2, 1);
 
-	// streak
-	// if(motionStreakTex == nullptr)
-	// motionStreakTex = _director->getTextureCache()->addImage("streak.png");
-	// motionStreak = MotionTrail::create(0.3f, 3, 10, {255, 255, 255}, motionStreakTex);
-	// motionStreak->setBlendFunc(BlendFunc::ADDITIVE);
+	_waveTrail = HardStreak::create();
+	if (_waveTrail)
+	{
+		_waveTrail->setVisible(false);
+		gameLayer->addChild(_waveTrail, 15);
+	}
 
-	// gameLayer->addChild(motionStreak);
-
-	// motionStreak->setStartingPositionInitialized(false);
 	deactivateStreak();
 
 	// scheduleUpdate();
@@ -219,23 +469,91 @@ void PlayerObject::setMainColor(Color3B col)
 	shipDragEffect->setStartColor({r, g, b, 190});
 	shipDragEffect->setEndColor({r, g, b, 0});
 
-	this->m_pMainSprite->setColor(col);
-	this->m_pShipSprite->setColor(col);
-	_ballSprite->setColor(col);
-	_ufoSprite->setColor(col);
+	if (m_pMainSprite)
+		m_pMainSprite->setColor(col);
+	if (m_pShipSprite)
+		m_pShipSprite->setColor(col);
+	if (_ballSprite)
+		_ballSprite->setColor(col);
+	if (_ufoSprite)
+		_ufoSprite->setColor(col);
+	if (_waveSprite)
+		_waveSprite->setColor(col);
+	if (_swingSprite)
+		_swingSprite->setColor(col);
+	if (_robotSprite)
+		_robotSprite->setMainColor(col);
+	if (_spiderSprite)
+		_spiderSprite->setMainColor(col);
+	if (_waveTrail)
+		_waveTrail->setTint(col);
 }
 
 void PlayerObject::setSecondaryColor(Color3B col)
 {
-	this->m_pSecondarySprite->setColor(col);
-	this->m_pShipSecondarySprite->setColor(col);
-	_ballSecondarySprite->setColor(col);
-	_ufoSecondarySprite->setColor(col);
+	if (m_pSecondarySprite)
+		m_pSecondarySprite->setColor(col);
+	if (m_pShipSecondarySprite)
+		m_pShipSecondarySprite->setColor(col);
+	if (_ballSecondarySprite)
+		_ballSecondarySprite->setColor(col);
+	if (_ufoSecondarySprite)
+		_ufoSecondarySprite->setColor(col);
+	if (_waveSecondarySprite)
+		_waveSecondarySprite->setColor(col);
+	if (_swingSecondarySprite)
+		_swingSecondarySprite->setColor(col);
+	if (_robotSprite)
+		_robotSprite->setSecondaryColor(col);
+	if (_spiderSprite)
+		_spiderSprite->setSecondaryColor(col);
 }
 
-Color3B PlayerObject::getMainColor() { return this->m_pMainSprite->getColor(); }
+void PlayerObject::setGlow(bool glow)
+{
+	m_bHasGlow = glow;
+	if (m_pMainGlowSprite)
+		m_pMainGlowSprite->setVisible(glow);
+	if (m_pShipGlowSprite)
+		m_pShipGlowSprite->setVisible(glow);
+	if (_ballGlowSprite)
+		_ballGlowSprite->setVisible(glow);
+	if (_ufoGlowSprite)
+		_ufoGlowSprite->setVisible(glow);
+	if (_waveGlowSprite)
+		_waveGlowSprite->setVisible(glow);
+	if (_swingGlowSprite)
+		_swingGlowSprite->setVisible(glow);
+	if (_robotSprite)
+		_robotSprite->setGlow(glow);
+	if (_spiderSprite)
+		_spiderSprite->setGlow(glow);
+}
 
-Color3B PlayerObject::getSecondaryColor() { return this->m_pSecondarySprite->getColor(); }
+void PlayerObject::setGlowColor(Color3B col)
+{
+	m_glowColor = col;
+	if (m_pMainGlowSprite)
+		m_pMainGlowSprite->setColor(col);
+	if (m_pShipGlowSprite)
+		m_pShipGlowSprite->setColor(col);
+	if (_ballGlowSprite)
+		_ballGlowSprite->setColor(col);
+	if (_ufoGlowSprite)
+		_ufoGlowSprite->setColor(col);
+	if (_waveGlowSprite)
+		_waveGlowSprite->setColor(col);
+	if (_swingGlowSprite)
+		_swingGlowSprite->setColor(col);
+	if (_robotSprite)
+		_robotSprite->setGlowColor(col);
+	if (_spiderSprite)
+		_spiderSprite->setGlowColor(col);
+}
+
+Color3B PlayerObject::getMainColor() { return m_pMainSprite ? m_pMainSprite->getColor() : Color3B::WHITE; }
+
+Color3B PlayerObject::getSecondaryColor() { return m_pSecondarySprite ? m_pSecondarySprite->getColor() : Color3B::WHITE; }
 
 void PlayerObject::setIsDead(bool value) { m_bIsDead = value; }
 
@@ -246,7 +564,7 @@ void PlayerObject::update(float dt)
 	m_prevPos = getPosition();
 	if (this->m_bIsDead) return;
 
-	if (_currentGamemode == PlayerGamemodeCube)
+	if (isGroundedMode())
 	{
 		if (isOnGround())
 		{
@@ -311,24 +629,45 @@ void PlayerObject::update(float dt)
 		//	shipDragEffect->pauseEmissions();
 	}
 
-	if (!this->m_bIsLocked)
+		if (!this->m_bIsLocked)
 	{
 		direction = clampf(direction, -1.f, 1.f);
 
 		if (!m_bIsPlatformer) direction = 1.f;
 
-		float dtSlow = dt * 0.9f;
-		this->updateJump(dtSlow);
+		if (_isDashing)
+		{
+			if (!m_bIsHolding)
+			{
+				_isDashing = false;
+			}
+			else
+			{
+				m_dYVel = 0.0;
+				float velX = (float)((double)dt * m_dXVel * (!m_bIsPlatformer ? 1.f : direction) * getPlayerSpeed());
+				setPosition(getPosition() + Vec2{velX, 0.f});
+			}
+		}
 
-		float velY = (float)((double)dtSlow * m_dYVel);
-		float velX = (float)((double)dt * m_dXVel * (!m_bIsPlatformer ? 1.f : direction) * getPlayerSpeed());
+		if (!_isDashing)
+		{
+			float dtSlow = dt * 0.9f;
+			this->updateJump(dtSlow);
 
-		ax::Vec2 velocity {velX, velY};
+			float velY = (float)((double)dtSlow * m_dYVel);
+			float velX = (float)((double)dt * m_dXVel * (!m_bIsPlatformer ? 1.f : direction) * getPlayerSpeed());
 
-		setPosition(getPosition() + velocity);
+			if (_currentGamemode == PlayerGamemodeWave)
+			{
+				const float dir = (m_bIsHolding ? 1.f : -1.f) * flipMod();
+				velY = velX * dir;
+				m_dYVel = velY / (dtSlow > 0.f ? dtSlow : 1.f);
+				setRotation(-45.f * dir);
+			}
+
+			setPosition(getPosition() + Vec2{velX, velY});
+		}
 	}
-
-	if (this->getPositionX() >= 500 && !this->inPlayLayer) this->m_bIsHolding = true;
 
 	//setScaleX(direction < -0.05f ? -1.f : direction > 0.05f ? 1.f : getScaleX());
 
@@ -352,30 +691,57 @@ void PlayerObject::update(float dt)
 	// particle->setPosition(this->getPosition());
 	// this->gameLayer->addChild(particle, 999);
 
+	updateIconAnimation();
+	updateWaveTrail();
+
 	_touchedRingObject = nullptr;
 	_touchedPadObject = nullptr;
 }
 
+void PlayerObject::storeShipRotationPos()
+{
+	_shipRotationPos = getPosition();
+	_shipRotationPosValid = true;
+}
+
 void PlayerObject::updateShipRotation(float dt)
 {
-	float angleRad, curAngleDeg, newAngleDeg;
+	// dt is in "tick" units (realDelta * 60), matching RobTop's updateShipRotation.
+	if (_currentGamemode != PlayerGamemodeShip && _currentGamemode != PlayerGamemodeUFO)
+		return;
 
-	Vec2 pos = getPosition();
+	const Vec2 pos = getPosition();
+	Vec2 diff = pos - (_shipRotationPosValid ? _shipRotationPos : m_prevPos);
+	diff.y = -diff.y;
 
-	Vec2 d = (pos - m_prevPos) / dt;
-
-	if (GameToolbox::SquareDistance(0, 0, d.x, -d.y) >= 1.2f)
+	const float distSq = diff.x * diff.x + diff.y * diff.y;
+	if (dt * 1.2f > distSq)
 	{
-		angleRad = atan2f(-d.y, d.x);
-
-		angleRad *= _mini ? 1.2f : 1.f;
-
-		curAngleDeg = getRotation();
-
-		newAngleDeg = GameToolbox::iSlerp(curAngleDeg, angleRad * 57.296f, 0.15f, dt / 60.f);
-
-		setRotation(newAngleDeg);
+		_shipRotationPos = pos;
+		_shipRotationPosValid = true;
+		return;
 	}
+
+	const float fromAngleDeg = getRotation();
+	float toAngleDeg = atan2f(diff.y, diff.x) * 57.29578f;
+	float interp = 0.15f;
+
+	if (_currentGamemode == PlayerGamemodeUFO)
+	{
+		const float clampVal = isGravityFlipped() ? -0.1f : 0.1f;
+		float toRad = toAngleDeg * 0.017453292f;
+		if (isGravityFlipped())
+			toRad = std::max(toRad * -0.4f, clampVal);
+		else
+			toRad = std::min(toRad * -0.4f, clampVal);
+		toAngleDeg = toRad * 57.29578f;
+	}
+
+	const float t = std::clamp(std::min(dt * interp, dt), 0.f, 1.f);
+	setRotation(GameToolbox::slerp(fromAngleDeg, toAngleDeg, t));
+
+	_shipRotationPos = pos;
+	_shipRotationPosValid = true;
 }
 
 void PlayerObject::spawnPortalCircle(ax::Color4B color, float radius)
@@ -389,12 +755,43 @@ void PlayerObject::spawnPortalCircle(ax::Color4B color, float radius)
 
 void PlayerObject::deactivateStreak()
 {
-	// motionStreak->stopStroke();
+	if (!_waveTrail)
+		return;
+	_waveTrail->stopStroke();
+	_waveTrail->reset();
+	_waveTrail->setVisible(false);
 }
 
 void PlayerObject::activateStreak()
 {
-	// motionStreak->resumeStroke();
+	if (!_waveTrail)
+		return;
+	if (_currentGamemode != PlayerGamemodeWave)
+	{
+		deactivateStreak();
+		return;
+	}
+
+	_waveTrail->setStroke(_mini ? 8.f : 14.f);
+	_waveTrail->setTint(getMainColor());
+	_waveTrail->setVisible(true);
+	_waveTrail->resumeStroke();
+}
+
+void PlayerObject::updateWaveTrail()
+{
+	if (!_waveTrail || _currentGamemode != PlayerGamemodeWave || !_waveTrail->isVisible())
+		return;
+
+	if (m_bIsDead)
+		return;
+
+	_waveTrail->setStroke(_mini ? 8.f : 14.f);
+	_waveTrail->addPoint(getPosition());
+	_waveTrail->updateStroke();
+
+	const int z = getLocalZOrder();
+	_waveTrail->setLocalZOrder(z > 0 ? z - 1 : 0);
 }
 
 void PlayerObject::propellPlayer(double force)
@@ -404,6 +801,8 @@ void PlayerObject::propellPlayer(double force)
 	m_dYVel = flipMod() * 16 * force * (_vehicleSize == 1.0 ? 1.0 : 0.8);
 
 	if (_currentGamemode == PlayerGamemodeBall || _currentGamemode == PlayerGamemodeSpider) m_dYVel *= 0.6;
+	if (_currentGamemode == PlayerGamemodeShip)
+		_isAccelerating = true;
 
 	runRotateAction();
 	setLastGroundPos(getPosition());
@@ -445,6 +844,8 @@ void PlayerObject::ringJump(GameObject* obj)
 				break;
 			}
 			m_dYVel = newYVel;
+			if (_currentGamemode == PlayerGamemodeShip)
+				_isAccelerating = true;
 			activateStreak();
 			if (_currentGamemode == PlayerGamemodeBall) m_bIsHolding = false;
 			_touchedRingObject = nullptr;
@@ -499,6 +900,22 @@ void PlayerObject::ringJump(GameObject* obj)
 			}
 			flipGravity(!isGravityFlipped());
 			break;
+		case kGameObjectTypeDashRing:
+		case kGameObjectTypeGravityDashRing:
+			_isDashing = true;
+			m_dYVel = 0.0;
+			if (obj->getGameObjectType() == kGameObjectTypeGravityDashRing)
+				flipGravity(!isGravityFlipped());
+			_touchedRingObject = nullptr;
+			activateStreak();
+			return;
+		case kGameObjectTypeSpiderRing:
+			_spiderTeleportQueued = true;
+			_touchedRingObject = nullptr;
+			return;
+		case kGameObjectTypeCustomRing:
+			_touchedRingObject = nullptr;
+			return;
 		default:
 			if (_currentGamemode == PlayerGamemodeRobot) newYVel *= 0.9;
 			break;
@@ -508,6 +925,9 @@ void PlayerObject::ringJump(GameObject* obj)
 		newYVel *= _vehicleSize < 1.f ? 0.8f : 1.f;
 
 		m_dYVel = newYVel;
+
+		if (_currentGamemode == PlayerGamemodeShip)
+			_isAccelerating = true;
 
 		if (_currentGamemode == PlayerGamemodeBall)
 			runBallRotation();
@@ -565,29 +985,94 @@ void PlayerObject::updateJump(float dt)
 
 	float playerSize = _mini ? 0.8f : 1.0f;
 
+	if (_currentGamemode == PlayerGamemodeWave)
+		return;
+
 	if (_currentGamemode == PlayerGamemodeShip || _currentGamemode == PlayerGamemodeUFO ||
-		_currentGamemode == PlayerGamemodeWave)
+		_currentGamemode == PlayerGamemodeSwing)
 	{
-		if (_mini) playerSize = 0.85f;
+		if (_mini)
+			playerSize = 0.85f;
 
-		float upperVelocityLimit = 8.0 / playerSize;
-		float lowerVelocityLimit = -6.4 / playerSize;
-
-		if (this->_currentGamemode == PlayerGamemodeShip)
+		float upperVelocityLimit;
+		float lowerVelocityLimit;
+		if (_vehicleSize == 1.0f)
 		{
+			upperVelocityLimit = 8.0f / playerSize;
+			lowerVelocityLimit = -6.4f / playerSize;
+		}
+		else
+		{
+			upperVelocityLimit = 9.4118f;
+			lowerVelocityLimit = -7.5294f;
+			playerSize = 0.85f;
+		}
+
+		// Clear boost-lock once velocity returns inside normal ship limits.
+		if (!isGravityFlipped())
+		{
+			if (m_dYVel >= 0.0 && m_dYVel < upperVelocityLimit)
+				_isAccelerating = false;
+			if (m_dYVel <= 0.0 && m_dYVel > lowerVelocityLimit)
+				_isAccelerating = false;
+		}
+		else
+		{
+			if (m_dYVel <= 0.0 && m_dYVel > -upperVelocityLimit)
+				_isAccelerating = false;
+			if (m_dYVel >= 0.0 && m_dYVel < -lowerVelocityLimit)
+				_isAccelerating = false;
+		}
+
+		if (this->_currentGamemode == PlayerGamemodeSwing)
+		{
+			if (_hasJustHeld)
+			{
+				_hasJustHeld = false;
+				flipGravity(!isGravityFlipped());
+			}
+			float gravMult = playerIsFalling() ? 0.5f : 0.4f;
+			m_dYVel -= localGravity * dt * flipGravityMult * gravMult / playerSize;
+		}
+		else if (this->_currentGamemode == PlayerGamemodeShip)
+		{
+			// Geometry Dash 2.2 ship thrust (from camila314/gdp decomp).
 			float shipAccel = 0.8f;
 
-			if (this->m_bIsHolding) shipAccel = -1.0f;
-
-			if (!this->m_bIsHolding && !this->playerIsFalling())
+			if (m_bIsHolding)
 			{
-				shipAccel = 1.2f;
+				if (_isAccelerating && (isGravityFlipped() ? m_dYVel <= 0.0 : m_dYVel >= 0.0))
+					shipAccel = 0.8f;
+				else
+					shipAccel = -1.0f;
+			}
+			else if (!_isAccelerating)
+			{
+				shipAccel = 0.8f;
+				if (!playerIsFallingBugged())
+					shipAccel = 1.2f;
 			}
 
-			float extraBoost = 0.4f;
-			if (this->m_bIsHolding && this->playerIsFalling()) extraBoost = 0.5;
+			float extraBoost = playerIsFallingBugged() ? 0.5f : 0.4f;
+			float grav = localGravity;
 
-			this->m_dYVel -= localGravity * dt * flipGravityMult * shipAccel * extraBoost / playerSize;
+			if (m_bIsPlatformer || _isAccelerating)
+			{
+				if (m_bIsPlatformer)
+					grav *= 0.8f;
+				if (shipAccel < 0.0f)
+					grav = localGravity;
+			}
+			else if (m_bIsHolding)
+			{
+				grav = localGravity;
+			}
+			else
+			{
+				extraBoost = 0.4f;
+			}
+
+			m_dYVel -= shipAccel * grav * dt * flipGravityMult * extraBoost / playerSize;
 		}
 		else if (_currentGamemode == PlayerGamemodeUFO)
 		{
@@ -618,7 +1103,7 @@ void PlayerObject::updateJump(float dt)
 		{
 			if (this->m_dYVel <= -upperVelocityLimit) this->m_dYVel = -upperVelocityLimit;
 
-			upperVelocityLimit = 6.4f / playerSize;
+			upperVelocityLimit = (_vehicleSize == 1.0f) ? (6.4f / playerSize) : 7.5294f;
 		}
 		if (this->m_dYVel >= upperVelocityLimit) this->m_dYVel = upperVelocityLimit;
 	}
@@ -629,6 +1114,26 @@ void PlayerObject::updateJump(float dt)
 		if (_currentGamemode == PlayerGamemodeBall) gravityMultiplier = 0.6f;
 
 		bool shouldJump = m_bIsHolding;
+
+		if (_currentGamemode == PlayerGamemodeSpider && _hasJustHeld)
+		{
+			_hasJustHeld = false;
+			_spiderTeleportQueued = true;
+			m_bIsHolding = false;
+			return;
+		}
+
+		if (_currentGamemode == PlayerGamemodeRobot && shouldJump && _hasJustHeld && !isOnGround() && _jumpedTimes < 2)
+		{
+			_hasJustHeld = false;
+			_jumpedTimes = 2;
+			m_isRising = true;
+			setIsOnGround(false);
+			m_dYVel = flipGravityMult * m_dJumpHeight * playerSize * 0.85f;
+			if (_robotSprite)
+				_robotSprite->playAnimation("jump_start", false, true);
+			return;
+		}
 
 		if (shouldJump && isOnGround())
 		{
@@ -645,7 +1150,7 @@ void PlayerObject::updateJump(float dt)
 				this->m_bIsHolding = false;
 				this->m_dYVel *= 0.6;
 			}
-			else if (_currentGamemode == PlayerGamemodeCube)
+			else if (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot)
 			{
 				if (!_touchedRingObject) _queuedHold = false;
 				runRotateAction();
@@ -701,95 +1206,317 @@ void PlayerObject::updateJump(float dt)
 
 bool PlayerObject::playerIsFalling()
 {
-	if (this->isGravityFlipped())
-		return this->m_dYVel > this->m_dGravity;
-	else
-		return this->m_dYVel < this->m_dGravity;
+	// Corrected (post-2.2) falling check: moving with gravity.
+	return isGravityFlipped() ? (m_dYVel > 0.0) : (m_dYVel < 0.0);
+}
+
+bool PlayerObject::playerIsFallingBugged()
+{
+	// Legacy threshold used by older ship code paths.
+	if (isGravityFlipped())
+		return m_dYVel > m_dGravity;
+	return m_dYVel < m_dGravity;
 }
 
 void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 {
-	Vec2 pos = getPosition();
-	Rect rect = obj->getOuterBounds();
-
-	Rect playerRectO = _mini ? getOuterBounds(0.6f, 0.6f) : getOuterBounds();
-	Rect playerRectI = getInnerBounds();
-
-	float flipModV = flipMod();
-
-	float mod = flipModV * 10.0f;
-
-	if (_currentGamemode == PlayerGamemodeShip) mod = flipModV * 6.0f;
-
-	float topP = (pos.y + (playerRectO.origin.height * -0.5f * -flipMod())) - mod;
-	float bottomP = (pos.y + (playerRectO.origin.height * -0.5f * flipMod())) + mod;
-
-	float MaxY = rect.getMaxY();
-	float MinY = rect.getMinY();
-
-	// h
-	float MaxYP = playerRectO.getMaxY();
-	float MinYP = playerRectO.getMinY();
-
-	float t = topP;
-	float b = bottomP;
-
-	if (isGravityFlipped())
+	if (_currentGamemode == PlayerGamemodeWave)
 	{
-		if (_currentGamemode != PlayerGamemodeShip && _currentGamemode != PlayerGamemodeUFO) goto topCollision;
-		t = bottomP;
-		b = topP;
+		if (auto* pl = PlayLayer::getInstance())
+			pl->destroyPlayer(this);
+		return;
 	}
-	if (b >= MaxY || t >= MaxY)
+
+	const Rect objectBounds = obj->getOuterBounds();
+	Rect playerBounds = _mini ? getOuterBounds(0.6f, 0.6f) : getOuterBounds();
+	const Rect innerBounds = getInnerBounds();
+
+	const Vec2 movement = getPosition() - m_prevPos;
+	Rect previousBounds = playerBounds;
+	previousBounds.origin -= movement;
+
+	const bool horizontalOverlap =
+		playerBounds.getMaxX() > objectBounds.getMinX() &&
+		playerBounds.getMinX() < objectBounds.getMaxX();
+	const bool prevHorizontalOverlap =
+		previousBounds.getMaxX() > objectBounds.getMinX() &&
+		previousBounds.getMinX() < objectBounds.getMaxX();
+	if (!horizontalOverlap && !prevHorizontalOverlap)
 	{
-		if (m_dYVel < 0.0f)
+		if (innerBounds.intersectsRect(objectBounds) && !obj->_isTrigger)
+			static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+		return;
+	}
+
+	const bool flying = isFlying();
+	const float fallStep = std::abs(static_cast<float>(m_dYVel)) * std::max(dt, 0.f);
+	// Cube needs a wide snap so gravity cannot tunnel through a block.
+	// Ship/UFO must only land when they actually approach the surface from outside;
+	// otherwise they get pushed onto every block and fly through the level.
+	const float snapPad = flying ? 6.f : std::max(12.f, fallStep + 6.f);
+
+	if (!isGravityFlipped() && m_dYVel <= 0.f)
+	{
+		const float blockTop = objectBounds.getMaxY();
+		const bool cameFromAbove = previousBounds.getMinY() >= blockTop - snapPad;
+
+		if (flying)
 		{
-			// checkSnapJumpToObject(obj);
-			//  idk snapping to Y
-			playerRectI.origin.x = rect.origin.x;
-			if (playerRectI.intersectsRect(rect))
+			if (cameFromAbove && playerBounds.getMinY() <= blockTop + 1.f)
 			{
-				playerRectI.origin.x = pos.x;
-				goto death;
+				setPositionY(blockTop + playerBounds.size.height * 0.5f);
+				hitGround(false);
+				return;
 			}
-			if (MaxYP >= (MinY + MaxY) / 2.f)
+		}
+		else
+		{
+			const float embed = blockTop - playerBounds.getMinY();
+			const bool slightlyInFromTop =
+				embed >= -1.f && embed <= snapPad && getPositionY() >= objectBounds.getMidY();
+			const bool tunneledThrough = cameFromAbove && playerBounds.getMaxY() <= blockTop;
+			if ((cameFromAbove || slightlyInFromTop || tunneledThrough) &&
+				playerBounds.getMinY() <= blockTop + 1.f)
 			{
-				setPositionY(MaxY - (_mini ? 6 : 0));
-				hitGround(isGravityFlipped() ? _currentGamemode == PlayerGamemodeShip : false);
+				setPositionY(blockTop + playerBounds.size.height * 0.5f);
+				hitGround(false);
+				return;
+			}
+		}
+	}
+	else if (isGravityFlipped() && m_dYVel >= 0.f)
+	{
+		const float blockBottom = objectBounds.getMinY();
+		const bool cameFromBelow = previousBounds.getMaxY() <= blockBottom + snapPad;
+
+		if (flying)
+		{
+			if (cameFromBelow && playerBounds.getMaxY() >= blockBottom - 1.f)
+			{
+				setPositionY(blockBottom - playerBounds.size.height * 0.5f);
+				hitGround(true);
+				return;
+			}
+		}
+		else
+		{
+			const float embed = playerBounds.getMaxY() - blockBottom;
+			const bool slightlyInFromBottom =
+				embed >= -1.f && embed <= snapPad && getPositionY() <= objectBounds.getMidY();
+			const bool tunneledThrough = cameFromBelow && playerBounds.getMinY() >= blockBottom;
+			if ((cameFromBelow || slightlyInFromBottom || tunneledThrough) &&
+				playerBounds.getMaxY() >= blockBottom - 1.f)
+			{
+				setPositionY(blockBottom - playerBounds.size.height * 0.5f);
+				hitGround(true);
+				return;
 			}
 		}
 	}
 
-	if (!isGravityFlipped())
-	{
-		if (_currentGamemode != PlayerGamemodeShip && _currentGamemode != PlayerGamemodeUFO) goto death;
-		t = bottomP;
-		b = topP;
-	}
-topCollision:
-	if (b <= MinY || t <= MinY)
-	{
-		if (m_dYVel > 0.0f)
-		{
-			// checkSnapJumpToObject(obj);
-			//  idk snapping to Y
-			playerRectI.origin.x = rect.origin.x;
-			if (playerRectI.intersectsRect(rect))
-			{
-				playerRectI.origin.x = pos.x;
-				goto death;
-			}
-
-			if (MinYP <= (MinY + MaxY) / 2.f)
-			{
-				setPositionY(MinY - (_mini ? 24 : 30));
-				hitGround(!isGravityFlipped() ? _currentGamemode == PlayerGamemodeShip : false);
-			}
-		}
-	}
-death:
-	if (playerRectI.intersectsRect(rect) && !obj->_isTrigger) {
+	// Side / underside / embed is fatal. Flying dies on any non-landing contact
+	// (the 7.5 inner box is too small and lets the ship pass through walls).
+	if (!obj->_isTrigger && (flying || innerBounds.intersectsRect(objectBounds)))
 		static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+}
+
+void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
+{
+	if (!obj)
+		return;
+
+	const Rect objectBounds = obj->getOuterBounds();
+	if (objectBounds.size.width <= 0.f || objectBounds.size.height <= 0.f)
+		return;
+
+	// Wave cannot land on slopes in GD.
+	if (_currentGamemode == PlayerGamemodeWave)
+	{
+		static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+		return;
+	}
+
+	Rect playerBounds = _mini ? getOuterBounds(0.6f, 0.6f) : getOuterBounds();
+	const float playerRadius = playerBounds.size.height * 0.5f;
+	const float px = getPositionX();
+	const float upsideMod = isGravityFlipped() ? -1.f : 1.f;
+	const bool slopeFloorTop = obj->slopeFloorTop();
+	const bool slopeUphill = obj->isSlopeUphill();
+
+	// Travelling right into an uphill slope (or left into downhill) = uphill contact.
+	const bool playerUphill = slopeUphill;
+
+	const float slopeAngle = obj->getSlopeAngle();
+	const float cosA = std::max(std::cos(slopeAngle), 0.15f);
+	const float playerRadOnSlope = playerRadius / cosA;
+	const float playerRadOnPrevSlope = _wasOnSlope ? (playerRadius / std::max(std::cos(std::abs(_slopeRotation)), 0.15f)) : playerRadius;
+
+	const float clingExtra = playerUphill ? (_wasOnSlope ? 4.f : 1.f) : 0.f;
+	const float onSlopeThreshold = getPositionY() - upsideMod * (playerRadOnPrevSlope + clingExtra);
+
+	if (_wasOnSlope)
+	{
+		if (isGravityFlipped())
+		{
+			if (onSlopeThreshold < objectBounds.getMinY())
+				return;
+		}
+		else if (onSlopeThreshold > objectBounds.getMaxY())
+		{
+			return;
+		}
+	}
+	else
+	{
+		Rect exitRect = objectBounds;
+		exitRect.origin.y += 1.f;
+		exitRect.size.height = std::max(exitRect.size.height - 2.f, 1.f);
+		if (!playerBounds.intersectsRect(exitRect))
+			return;
+	}
+
+	const float slopeY = static_cast<float>(obj->slopeYPos(px));
+	float newPlayerY = slopeY + (playerRadOnSlope) * (slopeFloorTop ? -1.f : 1.f);
+
+	if (slopeFloorTop)
+	{
+		newPlayerY = std::max(newPlayerY, objectBounds.getMinY() - playerRadius);
+		newPlayerY = std::min(newPlayerY, objectBounds.getMaxY());
+	}
+	else
+	{
+		newPlayerY = std::min(newPlayerY, objectBounds.getMaxY() + playerRadius);
+		newPlayerY = std::max(newPlayerY, objectBounds.getMinY());
+	}
+
+	const bool slopeUpsideDown = isGravityFlipped() != slopeFloorTop;
+	bool collidedSlope = false;
+
+	if (slopeUpsideDown)
+	{
+		// Ceiling / inverted contact: kill on hard head hits, otherwise ignore soft contact.
+		if (upsideMod * getPositionY() > upsideMod * newPlayerY)
+		{
+			if (obj->isSlopeHazard() || (!_wasOnSlope && upsideMod * getPositionY() - 2.f > upsideMod * newPlayerY))
+			{
+				static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+				return;
+			}
+			setPositionY(newPlayerY);
+			m_dYVel = isGravityFlipped() ? std::max(m_dYVel, 2.0) : std::min(m_dYVel, -2.0);
+			setIsOnGround(false);
+			return;
+		}
+		return;
+	}
+
+	// Floor slopes: snap when below (or clinging near) the surface.
+	if (upsideMod * getPositionY() < upsideMod * newPlayerY)
+	{
+		collidedSlope = true;
+	}
+	else if (upsideMod * getPositionY() < upsideMod * (newPlayerY + clingExtra))
+	{
+		collidedSlope = playerUphill || m_dYVel * upsideMod <= 0.0;
+	}
+
+	if (!collidedSlope)
+		return;
+
+	if (obj->isSlopeHazard())
+	{
+		static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+		return;
+	}
+
+	// Side-hit into a downhill slope before the center reaches it → treat like a block top.
+	if (!_wasOnSlope && !slopeUphill && m_dYVel <= 0.0 && px < objectBounds.getMinX())
+	{
+		setPositionY(objectBounds.getMaxY() + playerRadius * upsideMod * (isGravityFlipped() ? -1.f : 1.f));
+		if (!isGravityFlipped())
+			setPositionY(objectBounds.getMaxY() + playerRadius);
+		else
+			setPositionY(objectBounds.getMinY() - playerRadius);
+		hitGround(isGravityFlipped());
+		return;
+	}
+
+	_currentSlope = obj;
+	_isOnSlope = true;
+	_slopeUphillContact = playerUphill;
+	_slopeRotation = slopeAngle * (playerUphill ? 1.f : -1.f) * flipMod();
+
+	const float slopeYVelocity = (objectBounds.size.height * m_playerSpeed) / objectBounds.size.width;
+	const float angleSafe = std::max(slopeAngle, 0.05f);
+	_slopeVelocity = std::min(1.12f / angleSafe, 1.54f) * slopeYVelocity * flipMod() * (playerUphill ? -1.f : 1.f);
+	if (isFlying() || _currentGamemode == PlayerGamemodeBall)
+		_slopeVelocity *= 0.75f;
+
+	if (!_wasOnSlope)
+		_slopeStartTime = _totalTime;
+
+	setPositionY(newPlayerY);
+	hitGround(false);
+
+	// Cube rotates to match the slope surface (GD updateSlopeRotation).
+	if (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot)
+	{
+		stopRotation();
+		setRotation(_slopeRotation * 57.29578f);
+	}
+	else if (_currentGamemode == PlayerGamemodeBall)
+	{
+		stopRotation();
+		setRotation(_slopeRotation * 57.29578f);
+	}
+
+	(void)dt;
+}
+
+void PlayerObject::beginSlopePass()
+{
+	_wasOnSlope = _isOnSlope;
+	_isOnSlope = false;
+	if (!_wasOnSlope)
+	{
+		_currentSlope = nullptr;
+		_slopeVelocity = 0.f;
+	}
+}
+
+void PlayerObject::endSlopePass(float dt)
+{
+	_totalTime += dt / 60.f;
+
+	if (_wasOnSlope && !_isOnSlope)
+	{
+		// Leave / eject off the slope (RobTop slope exit velocity).
+		if (_currentSlope && _slopeUphillContact && !isGravityFlipped())
+		{
+			const float hold = std::clamp(10.f * (_totalTime - _slopeStartTime), 0.4f, 1.f);
+			m_dYVel = _slopeVelocity * hold;
+			m_isRising = m_dYVel * flipMod() > 0.0;
+			setIsOnGround(false);
+			if (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot)
+				runRotateAction();
+		}
+		else if (_wasOnSlope && !_slopeUphillContact)
+		{
+			// Downhill fall-off
+			setIsOnGround(false);
+			if (_currentGamemode == PlayerGamemodeCube)
+				runRotateAction();
+		}
+
+		_currentSlope = nullptr;
+		_slopeVelocity = 0.f;
+		_slopeRotation = 0.f;
+	}
+	else if (_isOnSlope && (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeBall ||
+							_currentGamemode == PlayerGamemodeRobot))
+	{
+		// Keep orientation while riding.
+		setRotation(_slopeRotation * 57.29578f);
 	}
 }
 
@@ -797,31 +1524,55 @@ void PlayerObject::setGamemode(PlayerGamemode mode)
 {
 	if (_currentGamemode != mode)
 	{
-		_ufoSprite->setVisible(false);
-		m_pShipSprite->setVisible(false);
-		m_pMainSprite->setVisible(false);
-		_ballSprite->setVisible(false);
+		if (_ufoSprite)
+			_ufoSprite->setVisible(false);
+		if (m_pShipSprite)
+			m_pShipSprite->setVisible(false);
+		if (m_pMainSprite)
+			m_pMainSprite->setVisible(false);
+		if (_ballSprite)
+			_ballSprite->setVisible(false);
+		if (_waveSprite)
+			_waveSprite->setVisible(false);
+		if (_swingSprite)
+			_swingSprite->setVisible(false);
+		if (_spiderSprite)
+			_spiderSprite->setVisible(false);
+		if (_robotSprite)
+			_robotSprite->setVisible(false);
 		stopActionByTag(3);
 		stopActionByTag(2);
 		stopActionByTag(1);
 		stopActionByTag(0);
-		dragEffect1->pauseEmissions();
-		dragEffect2->pauseEmissions();
-		dragEffect3->pauseEmissions();
+		if (dragEffect1)
+			dragEffect1->pauseEmissions();
+		if (dragEffect2)
+			dragEffect2->pauseEmissions();
+		if (dragEffect3)
+			dragEffect3->pauseEmissions();
+
+		_currentGamemode = mode;
 		switch (mode)
 		{
 		case PlayerGamemodeCube:
 			setIsOnGround(false);
-			m_pMainSprite->setVisible(true);
-			m_pMainSprite->setScale(1.f);
-			m_pMainSprite->setPositionY(0);
+			if (m_pMainSprite)
+			{
+				m_pMainSprite->setVisible(true);
+				m_pMainSprite->setScale(1.f);
+				m_pMainSprite->setPositionY(15.f);
+			}
 			deactivateStreak();
 			break;
 		case PlayerGamemodeShip:
-			m_pShipSprite->setVisible(true);
-			m_pMainSprite->setVisible(true);
-			m_pMainSprite->setScale(0.55f);
-			m_pMainSprite->setPositionY(5);
+			if (m_pShipSprite)
+				m_pShipSprite->setVisible(true);
+			if (m_pMainSprite)
+			{
+				m_pMainSprite->setVisible(true);
+				m_pMainSprite->setScale(0.55f);
+				m_pMainSprite->setPositionY(20.f);
+			}
 			setRotation(0.f);
 			m_dYVel /= 2.f;
 			setIsOnGround(false);
@@ -829,22 +1580,86 @@ void PlayerObject::setGamemode(PlayerGamemode mode)
 			runRotateAction();
 			break;
 		case PlayerGamemodeBall:
-			_ballSprite->setVisible(true);
+			if (_ballSprite)
+				_ballSprite->setVisible(true);
 			deactivateStreak();
 			runBallRotation();
 			break;
 		case PlayerGamemodeUFO:
-			m_pMainSprite->setVisible(true);
-			m_pMainSprite->setScale(0.55f);
-			m_pMainSprite->setPositionY(5);
-			_ufoSprite->setVisible(true);
+			if (m_pMainSprite)
+			{
+				m_pMainSprite->setVisible(true);
+				m_pMainSprite->setScale(0.55f);
+				m_pMainSprite->setPositionY(20.f);
+			}
+			if (_ufoSprite)
+				_ufoSprite->setVisible(true);
+			deactivateStreak();
+			break;
+		case PlayerGamemodeWave:
+			if (_waveSprite)
+				_waveSprite->setVisible(true);
+			else if (m_pMainSprite)
+			{
+				m_pMainSprite->setVisible(true);
+				m_pMainSprite->setScale(1.f);
+				m_pMainSprite->setPositionY(15.f);
+			}
+			setIsOnGround(false);
+			activateStreak();
+			break;
+		case PlayerGamemodeSwing:
+			if (_swingSprite)
+				_swingSprite->setVisible(true);
+			else if (m_pMainSprite)
+			{
+				m_pMainSprite->setVisible(true);
+				m_pMainSprite->setScale(1.f);
+				m_pMainSprite->setPositionY(15.f);
+			}
+			setIsOnGround(false);
+			activateStreak();
+			break;
+		case PlayerGamemodeRobot:
+			if (_robotSprite)
+			{
+				_robotSprite->setVisible(true);
+				_robotSprite->playAnimation(robotRunAnimation(), true, true);
+			}
+			else if (m_pMainSprite)
+			{
+				m_pMainSprite->setVisible(true);
+				m_pMainSprite->setScale(1.f);
+				m_pMainSprite->setPositionY(15.f);
+			}
+			setRotation(0.f);
+			setIsOnGround(false);
+			deactivateStreak();
+			break;
+		case PlayerGamemodeSpider:
+			if (_spiderSprite)
+			{
+				_spiderSprite->setVisible(true);
+				_spiderSprite->playAnimation(spiderRunAnimation(), true, true);
+			}
+			else if (m_pMainSprite)
+			{
+				m_pMainSprite->setVisible(true);
+				m_pMainSprite->setScale(1.f);
+				m_pMainSprite->setPositionY(15.f);
+			}
+			setRotation(0.f);
+			setIsOnGround(false);
 			deactivateStreak();
 			break;
 		default:
 			break;
 		}
 
-		_currentGamemode = mode;
+		if (mode == PlayerGamemodeWave)
+			activateStreak();
+		else
+			deactivateStreak();
 	}
 }
 
@@ -954,13 +1769,15 @@ void PlayerObject::hitGround(bool reverseGravity)
 	if (_currentGamemode == PlayerGamemodeBall && !isOnGround()) runBallRotation();
 
 	_queuedHold = false;
+	_jumpedTimes = 0;
 	setIsOnGround(true);
 
 	if (getActionByTag(0)) stopRotation();
 
 	m_obLastGroundPos = getPosition();
 
-	if (_currentGamemode != PlayerGamemode::PlayerGamemodeShip) deactivateStreak();
+	if (_currentGamemode != PlayerGamemodeShip && _currentGamemode != PlayerGamemodeWave)
+		deactivateStreak();
 }
 
 float PlayerObject::flipMod() { return this->m_bGravityFlipped ? -1.0f : 1.0f; }
@@ -980,10 +1797,70 @@ void PlayerObject::logValues()
 
 void PlayerObject::runRotateAction()
 {
+	if (_currentGamemode == PlayerGamemodeRobot || _currentGamemode == PlayerGamemodeSpider)
+		return;
 	stopRotation();
 	auto action = RotateBy::create(0.41f * (_mini ? 0.8f : 1.f), 180.f * flipMod());
 	action->setTag(0);
 	runAction(action);
+}
+
+const char* PlayerObject::robotRunAnimation() const
+{
+	if (m_playerSpeed >= 1.3f)
+		return "run3";
+	if (m_playerSpeed >= 1.1f)
+		return "run2";
+	if (m_playerSpeed <= 0.7f)
+		return "skip";
+	return "run";
+}
+
+const char* PlayerObject::spiderRunAnimation() const
+{
+	if (m_playerSpeed >= 1.1f)
+		return "run2";
+	if (m_playerSpeed <= 0.7f)
+		return "walk";
+	return "run";
+}
+
+void PlayerObject::updateIconAnimation()
+{
+	AnimatedIconSprite* sprite = nullptr;
+	if (_currentGamemode == PlayerGamemodeRobot)
+		sprite = _robotSprite;
+	else if (_currentGamemode == PlayerGamemodeSpider)
+		sprite = _spiderSprite;
+	if (!sprite || !sprite->isVisible())
+		return;
+
+	if (_isDashing)
+	{
+		if (sprite->hasAnimation("dash_loop"))
+			sprite->playAnimation("dash_loop", true);
+		else
+			sprite->playAnimation(_currentGamemode == PlayerGamemodeRobot ? robotRunAnimation() : spiderRunAnimation(), true);
+		return;
+	}
+
+	if (isOnGround())
+	{
+		sprite->playAnimation(_currentGamemode == PlayerGamemodeRobot ? robotRunAnimation() : spiderRunAnimation(), true);
+		return;
+	}
+
+	if (playerIsFalling())
+	{
+		const std::string& current = sprite->currentAnimation();
+		if (current != "fall_start" && current != "fall_loop")
+			sprite->playAnimation("fall_start", false, true);
+		return;
+	}
+
+	const std::string& current = sprite->currentAnimation();
+	if (current != "jump_start" && current != "jump_loop" && current != "jump")
+		sprite->playAnimation("jump_start", false, true);
 }
 
 void PlayerObject::runBallRotation()
@@ -1027,34 +1904,47 @@ void PlayerObject::toggleMini(bool active)
 
 void PlayerObject::pushButton()
 {
-	if (this->inPlayLayer)
-	{
-		m_bIsHolding = true;
-		_hasJustHeld = true;
-		_queuedHold = true;
-	}
-	if((_currentGamemode == PlayerGamemode::PlayerGamemodeCube || _currentGamemode == PlayerGamemode::PlayerGamemodeRobot) && m_bOnGround) _jumpedTimes++;
+	m_bIsHolding = true;
+	_hasJustHeld = true;
+	_queuedHold = true;
+
+	if (this->inPlayLayer && _touchedRingObject && !_touchedRingObject->hasBeenActivatedByPlayer(this))
+		ringJump(_touchedRingObject);
+
+	if ((_currentGamemode == PlayerGamemode::PlayerGamemodeCube || _currentGamemode == PlayerGamemode::PlayerGamemodeRobot) &&
+		m_bOnGround)
+		_jumpedTimes++;
 }
 
 void PlayerObject::releaseButton()
 {
-	if (this->inPlayLayer)
-	{
-		_queuedHold = false;
-		_hasJustHeld = false;
-		m_bIsHolding = false;
-	}
+	_queuedHold = false;
+	_hasJustHeld = false;
+	m_bIsHolding = false;
 }
 
 PlayerObject* PlayerObject::create(int playerFrame, Layer* gameLayer)
 {
 	auto pRet = new (std::nothrow) PlayerObject();
 
-	if (pRet && pRet->init(playerFrame, gameLayer))
+	if (pRet && pRet->init(playerFrame, gameLayer, false))
 	{
 		pRet->autorelease();
 		return pRet;
 	}
 	AX_SAFE_DELETE(pRet);
 	return pRet;
+}
+
+PlayerObject* PlayerObject::createForMenu(Layer* gameLayer)
+{
+	auto pRet = new (std::nothrow) PlayerObject();
+
+	if (pRet && pRet->init(1, gameLayer, true))
+	{
+		pRet->autorelease();
+		return pRet;
+	}
+	AX_SAFE_DELETE(pRet);
+	return nullptr;
 }

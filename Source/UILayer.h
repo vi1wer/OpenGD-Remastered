@@ -32,7 +32,10 @@ public:
 	static UILayer* create();
 	bool init();
 
+	void setPracticeHintVisible(bool visible);
+
     ax::EventListenerTouchOneByOne *_listener;
+	ax::Node* _practiceHint = nullptr;
 
 	bool onTouchBegan(ax::Touch* touch, ax::Event* event);
 	void onTouchEnded(ax::Touch* touch, ax::Event* event);

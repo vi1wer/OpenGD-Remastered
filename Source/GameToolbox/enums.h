@@ -27,6 +27,7 @@ enum IconType {
 	kIconTypeRobot	   = 5,
 	kIconTypeSpider	  = 6,
 	kIconTypeSwing	   = 7,
+	kIconTypeJetpack	 = 8,
 	kIconTypeDeathEffect = 98,
 	kIconTypeSpecial	 = 99,
 };

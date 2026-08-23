@@ -38,7 +38,7 @@
 #include "2d/Transition.h"
 #include "2d/Menu.h"
 #include "base/Director.h"
-#include "ios/Application-ios.h"
+#include "platform/Application.h"
 #include "2d/Label.h"
 #include "EventDispatcher.h"
 #include "EventListenerKeyboard.h"
@@ -96,15 +96,14 @@ bool MenuLayer::init()
 
 	if (music)
 	{
-		//AudioEngine::play2d("menuLoop.mp3", true, 0.2f);
+		AudioEngine::play2d("menuLoop.mp3", true, 0.2f);
 		music = false;
 	}
 
 
-	//_mgl = MenuGameLayer::create();
-	//addChild(_mgl, -1);
+	_mgl = MenuGameLayer::create();
+	addChild(_mgl, -1);
 
-	float offsetScale = 1.13F;
 	const auto& winSize = Director::getInstance()->getWinSize();
 
 	auto log_oSpr = Sprite::createWithSpriteFrameName("GJ_logo_001.png");
@@ -144,15 +143,14 @@ bool MenuLayer::init()
 	if(!gm->_openedGarage)
 	{
 		auto spr = Sprite::createWithSpriteFrameName("GJ_chrSel_001.png");
-		spr->setPosition({-150.0f, -50.0f});
-		mainButtonMenu->addChild(spr);
+		spr->setPosition({-110.0f, -50.0f});
+		mainButtonMenu->addChild(spr, -1);
 	}
-	GameToolbox::log("gm->_openedCreator) {}", gm->_openedCreator);
 	if(!gm->_openedCreator)
 	{
 		auto spr = Sprite::createWithSpriteFrameName("GJ_lvlEdit_001.png");
-		spr->setPosition({150.0f, -50.0f});
-		mainButtonMenu->addChild(spr);
+		spr->setPosition({110.0f, -50.0f});
+		mainButtonMenu->addChild(spr, -1);
 	}
 
 
@@ -179,29 +177,21 @@ bool MenuLayer::init()
 
 
 	auto achievementsBtn = MenuItemSpriteExtra::create("GJ_achBtn_001.png", [&](Node* btn) {
-		auto endlevel = EndLevelLayer::create(2, 51, 10, false, 10);
-		addChild(endlevel);
-		//AlertLayer::create("coming soon", "this feature has not been added yet!")->show();
-		//auto dropdownlayer = DropDownLayer::create(nullptr, "Achievements");
-		//dropdownlayer->showLayer();
+		auto content = Layer::create();
+		auto label = Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"), "Achievements are not available yet.");
+		label->setScale(0.6f);
+		content->addChild(label);
+		DropDownLayer::create(content, "Achievements")->showLayer(true, false);
 	});
 	achievementsBtn->setScale(1.f);
 	//static_cast<ax::Sprite*>(achievementsBtn->getSprite())->setStretchEnabled(false);
 
 	auto optionsBtn = MenuItemSpriteExtra::create("GJ_optionsBtn_001.png", [&](Node* btn) {
-		addChild(OptionsLayer::create());
+		OptionsLayer::create();
 	});
 	
 	auto statsBtn = MenuItemSpriteExtra::create("GJ_statsBtn_001.png", [&](Node* btn) {
-		auto alert = AlertLayer::create("WIP!", "This feature is not yet supported!", "Close", "Click me!", NULL, NULL);
-		alert->setBtn2Callback([=](Node*) {
-			alert->close();
-			AlertLayer::create(
-				"Woah hello ;)", "apparently you can do this now. its pretty cool!", "Close", "My mood rn", NULL,
-				[=](Node*) { Application::getInstance()->openURL("https://www.youtube.com/watch?v=XSsRrlM3tNg"); })
-				->show();
-		});
-		alert->show();
+		ProfilePage::create(71, true)->show();
 	});
 	
 	auto ngButton = MenuItemSpriteExtra::create("GJ_ngBtn_001.png", [&](Node* btn) {});
@@ -217,7 +207,7 @@ bool MenuLayer::init()
 	this->addChild(bottomMenu);
 
 	auto moreGamesBtn = MenuItemSpriteExtra::create("GJ_moreGamesBtn_001.png", [&](Node* btn) {
-		this->addChild(MoreGamesLayer::create());
+		MoreGamesLayer::create();
 	});
 	moreGamesBtn->setScale(.9f); //no setScale in 2.1 but oversized for some reason in opengd
 	
@@ -242,12 +232,18 @@ bool MenuLayer::init()
 	{
 		auto spr = Sprite::createWithSpriteFrameName("GJ_viewProfileTxt_001.png");
 		spr->setPosition({profilePos.x + 76.0f, profilePos.y - 1.0f});
-		addChild(spr);
+		mainButtonMenu->addChild(spr, -1);
 	}
 	
 	auto dailyRewardBtn = MenuItemSpriteExtra::create("GJ_dailyRewardBtn_001.png", [](Node*){RewardsPage::create()->show();});
 	dailyRewardBtn->setPosition(bottomMenu->convertToNodeSpace({winSize.width - 40.0f, winSize.height / 2 + 20.0f}));
 	bottomMenu->addChild(dailyRewardBtn);
+
+	auto trailerBtn = MenuItemSpriteExtra::create("GJ_trailerBtn_001.png", [](Node*) {
+		Application::getInstance()->openURL("https://www.youtube.com/watch?v=LxA4NJMiZ8o");
+	});
+	trailerBtn->setPosition(bottomMenu->convertToNodeSpace({winSize.width - 40.0f, winSize.height / 2 + 80.0f}));
+	bottomMenu->addChild(trailerBtn);
 
 	GameToolbox::onKeyDown(true, this, [&](EventKeyboard::KeyCode code, Event*)
 	{

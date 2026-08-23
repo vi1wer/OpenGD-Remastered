@@ -20,7 +20,7 @@
 
 #include <vector>
 #include <string>
-#include <unordered_map>
+#include <map>
 #include <span>
 
 #include "PlayerObject.h"
@@ -47,10 +47,10 @@ namespace ax
 
 struct LevelSettings
 {
-	PlayerGamemode gamemode;
-	bool mini, dual, twoPlayer, flipGravity;
-	int speed;
-	float songOffset;
+	PlayerGamemode gamemode = PlayerGamemodeCube;
+	bool mini = false, dual = false, twoPlayer = false, flipGravity = false, platformer = false;
+	int speed = 0;
+	float songOffset = 0.f;
 	int _groundID = 1, _bgID = 1;
 };
 
@@ -101,8 +101,8 @@ public:
 
     std::vector<GameObject*> _allObjects;
 	std::vector<std::vector<GameObject*>> _sectionObjects;
-	std::unordered_map<int, SpriteColor, my_string_hash> _colorChannels, _originalColors;
-	std::unordered_map<int, GroupProperties, my_string_hash> _groups;
+	std::map<int, SpriteColor> _colorChannels, _originalColors;
+	std::map<int, GroupProperties> _groups;
 
 	PlayerObject* _player1, *_player2;
 
@@ -114,18 +114,26 @@ protected:
     virtual void addObject(GameObject* obj);
     virtual void loadLevelData(std::string_view data);
 	virtual void fillColorChannel(std::span<std::string_view> colorString, int id);
+	void parseColorChannelList(std::string_view ks38);
 public:
-    AX_SYNTHESIZE(GJGameLevel*, _level, Level);
+	AX_SYNTHESIZE(GJGameLevel*, _level, Level);
+	ax::Color3B colorForChannel(int id) const;
 
     static BaseGameLayer* create(GJGameLevel*);
     virtual bool init(GJGameLevel*);
 	static int sectionForPos(float x);
 	static BaseGameLayer* getInstance() {return _instance;}
 	virtual bool isObjectBlending(GameObject* obj);
+	void attachGameObject(GameObject* obj);
+	void detachGameObject(GameObject* obj);
 
 	void processMoveActions(float dt);
-	void runMoveCommand(float duration, ax::Point offsetPos, int easeType, float easeAmt, int groupID);
+	void runMoveCommand(float duration, ax::Point offsetPos, int easeType, float easeAmt, int groupID,
+						bool lockToPlayerX = false, bool lockToPlayerY = false);
+	void runFollowCommand(float duration, int groupID, bool followX, bool followY);
+	void stopGroupActions(int groupID);
 	void processMoveActionsStep(float dt);
+	EffectManager* getEffectManager() { return _effectManager; }
 
 	ax::Color3B getLightBG(ax::Color3B bg, ax::Color3B p1);
 };

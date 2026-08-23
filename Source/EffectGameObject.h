@@ -36,18 +36,18 @@ private:
 	BaseGameLayer* _bgl;
 
 public:
-	float _duration;
+	float _duration = 0.f;
 	ax::Color3B _color;
 	GDHSV _hsv;
 	float _opacity = 1.0f;
 	int _targetColorId = 1, _targetGroupId = -1;
-	bool _wasTriggerActivated;
+	bool _wasTriggerActivated = false;
 	int _copiedColorId = -1;
 
-	float _fadeIn, _hold, _fadeOut;
-	int _pulseMode, _pulseType;
-	bool _mainOnly, _detailOnly;
-	bool _blending;
+	float _fadeIn = 0.f, _hold = 0.f, _fadeOut = 0.f;
+	int _pulseMode = 0, _pulseType = 0;
+	bool _mainOnly = false, _detailOnly = false;
+	bool _blending = false;
 	bool _activateGroup = false;
 	bool _spawnTriggered = false;
 	bool _multiTriggered = false;
@@ -55,10 +55,18 @@ public:
 
 	ax::Vec2 _offset;
 
-	int _easing;
-	float _easeRate;
+	int _easing = 0;
+	float _easeRate = 2.f;
 
-	bool _lockToPlayerX, _lockToPlayerY;
+	bool _lockToPlayerX = false, _lockToPlayerY = false;
+	bool _touchTriggered = false;
+	int _itemID = 0;
+	int _countTarget = 0;
+	int _countCompare = 0; // 0 equal, 1 larger, 2 smaller
+	float _rotation = 0.f;
+	float _followXMod = 1.f;
+	float _followYMod = 1.f;
+	int _targetGroupId2 = -1;
 
 private:
 	virtual void updateTweenAction(float value, std::string_view key) override;

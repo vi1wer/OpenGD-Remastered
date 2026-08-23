@@ -23,6 +23,8 @@
 
 class GameObject;
 class MotionTrail;
+class AnimatedIconSprite;
+class HardStreak;
 
 namespace ax 
 { 
@@ -42,15 +44,19 @@ enum PlayerGamemode
 	PlayerGamemodeWave = 4,
 	PlayerGamemodeRobot = 5,
 	PlayerGamemodeSpider = 6,
+	PlayerGamemodeSwing = 7,
 };
 
 class PlayerObject : public GameObject
 {
   private:
 	void updateJump(float dt);
-	bool init(int, ax::Layer*);
+	bool init(int, ax::Layer*, bool menuRandomIcons = false);
 	void runRotateAction();
 	void runBallRotation();
+	void updateIconAnimation();
+	const char* robotRunAnimation() const;
+	const char* spiderRunAnimation() const;
 
 	void logValues();
 
@@ -59,13 +65,27 @@ class PlayerObject : public GameObject
 
 	ax::Sprite* m_pMainSprite;
 	ax::Sprite* m_pSecondarySprite;
+	ax::Sprite* m_pMainGlowSprite = nullptr;
 	ax::Sprite* m_pShipSprite;
 	ax::Sprite* m_pShipSecondarySprite;
+	ax::Sprite* m_pShipGlowSprite = nullptr;
 	ax::Sprite* _ballSprite;
 	ax::Sprite* _ballSecondarySprite;
+	ax::Sprite* _ballGlowSprite = nullptr;
 	ax::Sprite* _ufoSprite;
 	ax::Sprite* _ufoSecondarySprite;
 	ax::Sprite* _ufoTertiarySprite;
+	ax::Sprite* _ufoGlowSprite = nullptr;
+	ax::Sprite* _waveSprite = nullptr;
+	ax::Sprite* _waveSecondarySprite = nullptr;
+	ax::Sprite* _waveGlowSprite = nullptr;
+	ax::Sprite* _swingSprite = nullptr;
+	ax::Sprite* _swingSecondarySprite = nullptr;
+	ax::Sprite* _swingGlowSprite = nullptr;
+	AnimatedIconSprite* _robotSprite = nullptr;
+	AnimatedIconSprite* _spiderSprite = nullptr;
+	bool m_bHasGlow = false;
+	ax::Color3B m_glowColor{255, 255, 255};
 
 	ax::ParticleSystemQuad* dragEffect1;
 	ax::ParticleSystemQuad* dragEffect2;
@@ -97,8 +117,20 @@ class PlayerObject : public GameObject
 
 	ax::Vec2 m_obLastGroundPos;
 	ax::Vec2 m_prevPos;
+	ax::Vec2 _shipRotationPos{0.f, 0.f};
+	bool _shipRotationPosValid = false;
+	bool _isAccelerating = false;
 
 	GameObject* m_snappedObject;
+
+	bool _isOnSlope = false;
+	bool _wasOnSlope = false;
+	GameObject* _currentSlope = nullptr;
+	float _slopeRotation = 0.f;
+	float _slopeVelocity = 0.f;
+	float _slopeStartTime = 0.f;
+	float _totalTime = 0.f;
+	bool _slopeUphillContact = false;
 
   public:
 
@@ -114,13 +146,16 @@ class PlayerObject : public GameObject
 
 	static ax::Texture2D* motionStreakTex;
 	MotionTrail* motionStreak;
+	HardStreak* _waveTrail = nullptr;
 
-	PlayerGamemode _currentGamemode;
+	PlayerGamemode _currentGamemode = PlayerGamemodeCube;
 
 	GameObject* _touchedRingObject;
 	
 	bool _hasRingJumped;
 	bool _queuedHold;
+	bool _isDashing = false;
+	bool _spiderTeleportQueued = false;
 
 	void reset();
 
@@ -128,18 +163,25 @@ class PlayerObject : public GameObject
 	float direction, _vehicleSize = 1.f;
 
 	static PlayerObject* create(int, ax::Layer*);
+	static PlayerObject* createForMenu(ax::Layer* gameLayer);
 
 	void setMainColor(ax::Color3B col);
 	void setSecondaryColor(ax::Color3B col);
+	void setGlow(bool glow);
+	void setGlowColor(ax::Color3B col);
 
 	ax::Color3B getMainColor();
 	ax::Color3B getSecondaryColor();
 
 	void jump();
 	void collidedWithObject(float dt, GameObject* obj);
+	void collidedWithSlope(float dt, GameObject* obj);
+	void beginSlopePass();
+	void endSlopePass(float dt);
 	void checkSnapJumpToObject(GameObject* obj);
 
 	void updateShipRotation(float dt);
+	void storeShipRotationPos();
 	bool isDead();
 	bool isOnGround();
 	bool isGravityFlipped();
@@ -148,11 +190,22 @@ class PlayerObject : public GameObject
 		return _currentGamemode == PlayerGamemodeShip || _currentGamemode == PlayerGamemodeSpider ||
 			   _currentGamemode == PlayerGamemodeBall;
 	}
+	bool isFlying()
+	{
+		return _currentGamemode == PlayerGamemodeShip || _currentGamemode == PlayerGamemodeUFO ||
+			   _currentGamemode == PlayerGamemodeWave || _currentGamemode == PlayerGamemodeSwing;
+	}
+	bool isGroundedMode()
+	{
+		return _currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot ||
+			   _currentGamemode == PlayerGamemodeSpider;
+	}
 	void stopRotation();
 	void toggleMini(bool active);
 	float flipMod();
 
 	bool playerIsFalling();
+	bool playerIsFallingBugged();
 
 	double getYVel()
 	{
@@ -172,7 +225,7 @@ class PlayerObject : public GameObject
 		return gameLayer;
 	}
 
-	void playDeathEffect();
+	void playDeathEffect(bool stopMusic = true);
 
 	void hitGround(bool reverseGravity);
 
@@ -203,6 +256,7 @@ class PlayerObject : public GameObject
 
 	void activateStreak();
 	void deactivateStreak();
+	void updateWaveTrail();
 
 	void pushButton();
 	void releaseButton();

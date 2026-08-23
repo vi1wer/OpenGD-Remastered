@@ -18,6 +18,7 @@
 
 #include "BaseGameLayer.h"
 #include "EffectGameObject.h"
+#include "GameObject.h"
 #include "GJGameLevel.h"
 #include "GameToolbox/conv.h"
 #include "GameToolbox/log.h"
@@ -28,6 +29,7 @@
 #include "GameToolbox/getTextureString.h"
 #include "platform/FileUtils.h"
 #include <2d/SpriteBatchNode.h>
+#include <2d/ParticleSystemQuad.h>
 
 USING_NS_AX;
 
@@ -75,17 +77,16 @@ void BaseGameLayer::loadLevel()
 
 	std::string levelStr = _level->_levelString;
 	if (levelStr.empty())
+		levelStr = GJGameLevel::getLevelStrFromID(_level->_levelID);
+	else if (levelStr.front() != 'k')
 	{
-		nlohmann::json file =
-			nlohmann::json::parse(FileUtils::getInstance()->getStringFromFile("Custom/mainLevels.json"));
-		std::string levelID = std::to_string(_level->_levelID);
-
-		if (!file.contains(levelID))
-			return; // check if our level actually exists in mainlevels list before doing anything
-
-		levelStr = fmt::format("H4sIAAAAAAAAA{}", file.at(levelID).get<std::string>());
+		std::string decompressed = GJGameLevel::decompressLvlStr(levelStr);
+		levelStr = decompressed.empty() ? GJGameLevel::getLevelStrFromID(_level->_levelID) : std::move(decompressed);
 	}
-	levelStr = GJGameLevel::decompressLvlStr(levelStr);
+	if (levelStr.empty() && _level->_levelID >= 1 && _level->_levelID <= 22)
+		levelStr = GJGameLevel::getLevelStrFromID(_level->_levelID);
+	if (levelStr.empty())
+		return;
 	{
 		auto s = BenchmarkTimer("load level");
 		setupLevel(levelStr);
@@ -205,12 +206,142 @@ void BaseGameLayer::initBatchNodes()
 
 bool BaseGameLayer::isObjectBlending(GameObject* obj)
 {
-	return _colorChannels.contains(obj->_mainColorChannel) && _colorChannels[obj->_mainColorChannel]._blending &&
-			   _colorChannels.contains(obj->_secColorChannel) && _colorChannels[obj->_secColorChannel]._blending ||
-		   !_colorChannels.contains(obj->_mainColorChannel) && _colorChannels.contains(obj->_secColorChannel) &&
-			   _colorChannels[obj->_secColorChannel]._blending ||
-		   !_colorChannels.contains(obj->_secColorChannel) && _colorChannels.contains(obj->_mainColorChannel) &&
-			   _colorChannels[obj->_mainColorChannel]._blending;
+	if (!obj)
+		return false;
+	const bool mainBlend = _colorChannels.contains(obj->_mainColorChannel) && _colorChannels[obj->_mainColorChannel]._blending;
+	const bool secBlend = _colorChannels.contains(obj->_secColorChannel) && _colorChannels[obj->_secColorChannel]._blending;
+	if (_colorChannels.contains(obj->_mainColorChannel) && _colorChannels.contains(obj->_secColorChannel))
+		return mainBlend && secBlend;
+	return mainBlend || secBlend;
+}
+
+namespace
+{
+bool spriteMatchesBatch(ax::Sprite* sprite, ax::SpriteBatchNode* batch)
+{
+	if (!sprite || !batch)
+		return false;
+	auto* st = sprite->getTexture();
+	auto* bt = batch->getTexture();
+	if (!st || !bt)
+		return false;
+	if (st == bt)
+		return true;
+	return st->getBackendTexture() && st->getBackendTexture() == bt->getBackendTexture();
+}
+
+bool spriteTreeMatchesBatch(ax::Sprite* sprite, ax::SpriteBatchNode* batch)
+{
+	if (!spriteMatchesBatch(sprite, batch))
+		return false;
+	for (auto* child : sprite->getChildren())
+	{
+		auto* childSprite = dynamic_cast<ax::Sprite*>(child);
+		if (!childSprite || !spriteTreeMatchesBatch(childSprite, batch))
+			return false;
+	}
+	return true;
+}
+} // namespace
+
+void BaseGameLayer::attachGameObject(GameObject* obj)
+{
+	if (!obj)
+		return;
+
+	if (obj->_particle)
+	{
+		if (!obj->_particle->getParent())
+		{
+			addChild(obj->_particle, 6);
+			AX_SAFE_RELEASE(obj->_particle);
+		}
+		obj->_particle->setPosition(obj->getPosition());
+		if (!obj->_animateOnTrigger)
+			obj->_particle->resumeEmissions();
+	}
+
+	if (obj->_glowSprite)
+	{
+		if (spriteMatchesBatch(obj->_glowSprite, _glowBatchNode))
+			_glowBatchNode->addChild(obj->_glowSprite);
+		else
+			addChild(obj->_glowSprite, -1);
+		AX_SAFE_RELEASE(obj->_glowSprite);
+	}
+
+	const bool blending = isObjectBlending(obj);
+	ax::SpriteBatchNode* batch = nullptr;
+
+	if (spriteTreeMatchesBatch(obj, _mainBatchNodeT1))
+	{
+		switch (obj->_zLayer)
+		{
+		case -3:
+			batch = blending ? _blendingBatchNodeB4 : _mainBatchNodeB4;
+			break;
+		case -1:
+			batch = blending ? _blendingBatchNodeB3 : _mainBatchNodeB3;
+			break;
+		case 1:
+			batch = blending ? _blendingBatchNodeB2 : _mainBatchNodeB2;
+			break;
+		case 3:
+			batch = blending ? _blendingBatchNodeB1 : _mainBatchNodeB1;
+			break;
+		case 7:
+			batch = blending ? _blendingBatchNodeT2 : _mainBatchNodeT2;
+			break;
+		case 9:
+			batch = blending ? _blendingBatchNodeT3 : _mainBatchNodeT3;
+			break;
+		default:
+			batch = blending ? _blendingBatchNodeT1 : _mainBatchNodeT1;
+			break;
+		}
+	}
+	else if (spriteTreeMatchesBatch(obj, _main2BatchNode))
+	{
+		batch = _main2BatchNode;
+		if (blending)
+			obj->setBlendFunc(GameToolbox::getBlending());
+	}
+
+	if (batch)
+		batch->addChild(obj);
+	else
+		addChild(obj, 3);
+
+	AX_SAFE_RELEASE(obj);
+
+	std::string_view frame = GameObject::getBlockFrame(obj->getID());
+	if (obj->_isTrigger || frame.rfind("edit_e", 0) == 0 || frame.rfind("edit_ee", 0) == 0)
+	{
+		obj->setVisible(false);
+		obj->setOpacity(0);
+	}
+	else if (!obj->getActionByTag(80) && !obj->getActionByTag(81))
+		obj->startIdleAnimation();
+}
+
+void BaseGameLayer::detachGameObject(GameObject* obj)
+{
+	if (!obj)
+		return;
+
+	auto detachNode = [](ax::Node* node) {
+		if (!node)
+			return;
+		if (auto* parent = node->getParent())
+		{
+			AX_SAFE_RETAIN(node);
+			parent->removeChild(node, false);
+		}
+	};
+
+	detachNode(obj->_particle);
+	detachNode(obj->_glowSprite);
+	detachNode(obj);
 }
 
 void BaseGameLayer::createObjectsFromSetup(std::string_view uncompressedLevelString)
@@ -257,31 +388,34 @@ void BaseGameLayer::setupLevel(std::string_view uncompressedLevelString)
 	std::vector<std::string_view> levelData =
 		GameToolbox::splitByDelimStringView(GameToolbox::splitByDelimStringView(uncompressedLevelString, ';')[0], ',');
 
+	_colorChannels[1000] = SpriteColor(ax::Color3B::WHITE, 255, false);
+	_colorChannels[1001] = SpriteColor(ax::Color3B::WHITE, 255, false);
+
 	for (size_t i = 0; i < levelData.size() - 1; i += 2)
 	{
 		if (levelData[i] == "kS1")
 		{
-			_colorChannels.insert({1000, SpriteColor(ax::Color3B(GameToolbox::stof(levelData[i + 1]), 0, 0), 255, 0)});
+			_colorChannels[1000]._color.r = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
 		}
 		else if (levelData[i] == "kS2")
 		{
-			_colorChannels.at(1000)._color.g = GameToolbox::stof(levelData[i + 1]);
+			_colorChannels[1000]._color.g = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
 		}
 		else if (levelData[i] == "kS3")
 		{
-			_colorChannels.at(1000)._color.b = GameToolbox::stof(levelData[i + 1]);
+			_colorChannels[1000]._color.b = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
 		}
 		else if (levelData[i] == "kS4")
 		{
-			_colorChannels.insert({1001, SpriteColor(ax::Color3B(GameToolbox::stof(levelData[i + 1]), 0, 0), 255, 0)});
+			_colorChannels[1001]._color.r = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
 		}
 		else if (levelData[i] == "kS5")
 		{
-			_colorChannels.at(1001)._color.g = GameToolbox::stof(levelData[i + 1]);
+			_colorChannels[1001]._color.g = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
 		}
 		else if (levelData[i] == "kS6")
 		{
-			_colorChannels.at(1001)._color.b = GameToolbox::stof(levelData[i + 1]);
+			_colorChannels[1001]._color.b = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
 		}
 		else if (levelData[i] == "kS29")
 		{
@@ -310,51 +444,7 @@ void BaseGameLayer::setupLevel(std::string_view uncompressedLevelString)
 		}
 		else if (levelData[i] == "kS38")
 		{
-			auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '|');
-			for (std::string_view colorData : colorString)
-			{
-				auto innerData = GameToolbox::splitByDelimStringView(colorData, '_');
-				int key;
-				SpriteColor col;
-				col._blending = false;
-				for (size_t j = 0; j < innerData.size() - 1; j += 2)
-				{
-					switch (GameToolbox::stoi(innerData[j]))
-					{
-					case 1:
-						col._color.r = GameToolbox::stof(innerData[j + 1]);
-						break;
-					case 2:
-						col._color.g = GameToolbox::stof(innerData[j + 1]);
-						break;
-					case 3:
-						col._color.b = GameToolbox::stof(innerData[j + 1]);
-						break;
-					case 5:
-						col._blending = GameToolbox::stoi(innerData[j + 1]);
-						break;
-					case 6:
-						key = GameToolbox::stoi(innerData[j + 1]);
-						break;
-					case 7:
-						col._opacity = GameToolbox::stof(innerData[j + 1]) * 255.f;
-						break;
-					case 9:
-						col._copyingColorID = GameToolbox::stoi(innerData[j + 1]);
-						break;
-					case 10:
-						auto hsv = GameToolbox::splitByDelimStringView(innerData[j + 1], 'a');
-						col._hsvModifier.h = GameToolbox::stof(hsv[0]);
-						col._hsvModifier.s = GameToolbox::stof(hsv[1]);
-						col._hsvModifier.v = GameToolbox::stof(hsv[2]);
-						col._hsvModifier.sChecked = GameToolbox::stoi(hsv[3]);
-						col._hsvModifier.vChecked = GameToolbox::stoi(hsv[4]);
-						col._applyHsv = true;
-						break;
-					}
-				}
-				_colorChannels.insert({key, col});
-			}
+			parseColorChannelList(levelData[i + 1]);
 		}
 		else if (levelData[i] == "kA6")
 		{
@@ -396,6 +486,10 @@ void BaseGameLayer::setupLevel(std::string_view uncompressedLevelString)
 		{
 			_levelSettings.songOffset = GameToolbox::stof(levelData[i + 1]);
 		}
+		else if (levelData[i] == "kA22")
+		{
+			_levelSettings.platformer = GameToolbox::stoi(levelData[i + 1]) != 0;
+		}
 	}
 
 	// change to get the player color not from player
@@ -407,26 +501,146 @@ void BaseGameLayer::setupLevel(std::string_view uncompressedLevelString)
 	_colorChannels[1007]._color = _colorChannels[1000]._color;
 	_colorChannels[1007]._blending = true;
 
-	_originalColors = std::unordered_map<int, SpriteColor, my_string_hash>(_colorChannels);
+	_originalColors = _colorChannels;
 }
 
 void BaseGameLayer::fillColorChannel(std::span<std::string_view> colorString, int id)
 {
-	for (size_t j = 0; j < colorString.size() - 1; j += 2)
+	if (!_colorChannels.contains(id))
+		_colorChannels[id] = SpriteColor(ax::Color3B::WHITE, 255, false);
+
+	SpriteColor& col = _colorChannels[id];
+	for (size_t j = 0; j + 1 < colorString.size(); j += 2)
 	{
 		switch (GameToolbox::stoi(colorString[j]))
 		{
 		case 1:
-			_colorChannels.insert({id, SpriteColor(ax::Color3B(GameToolbox::stof(colorString[j + 1]), 0, 0), 255, 0)});
+			col._color.r = static_cast<uint8_t>(GameToolbox::stof(colorString[j + 1]));
 			break;
 		case 2:
-			_colorChannels.at(id)._color.g = GameToolbox::stof(colorString[j + 1]);
+			col._color.g = static_cast<uint8_t>(GameToolbox::stof(colorString[j + 1]));
 			break;
 		case 3:
-			_colorChannels.at(id)._color.b = GameToolbox::stof(colorString[j + 1]);
+			col._color.b = static_cast<uint8_t>(GameToolbox::stof(colorString[j + 1]));
+			break;
+		case 4:
+		{
+			const int playerColor = GameToolbox::stoi(colorString[j + 1]);
+			if (playerColor == 1)
+				col._copyingColorID = 1005;
+			else if (playerColor == 2)
+				col._copyingColorID = 1006;
+			break;
+		}
+		case 5:
+			col._blending = GameToolbox::stoi(colorString[j + 1]) != 0;
+			break;
+		case 7:
+			col._opacity = GameToolbox::stof(colorString[j + 1]) * 255.f;
 			break;
 		}
 	}
+}
+
+void BaseGameLayer::parseColorChannelList(std::string_view ks38)
+{
+	auto colorString = GameToolbox::splitByDelimStringView(ks38, '|');
+	for (std::string_view colorData : colorString)
+	{
+		if (colorData.empty())
+			continue;
+
+		auto innerData = GameToolbox::splitByDelimStringView(colorData, '_');
+		int key = 0;
+		SpriteColor col(ax::Color3B::WHITE, 255.f, false);
+		col._copyingColorID = -1;
+		col._applyHsv = false;
+
+		for (size_t j = 0; j + 1 < innerData.size(); j += 2)
+		{
+			switch (GameToolbox::stoi(innerData[j]))
+			{
+			case 1:
+				col._color.r = static_cast<uint8_t>(GameToolbox::stof(innerData[j + 1]));
+				break;
+			case 2:
+				col._color.g = static_cast<uint8_t>(GameToolbox::stof(innerData[j + 1]));
+				break;
+			case 3:
+				col._color.b = static_cast<uint8_t>(GameToolbox::stof(innerData[j + 1]));
+				break;
+			case 4:
+			{
+				const int playerColor = GameToolbox::stoi(innerData[j + 1]);
+				if (playerColor == 1)
+					col._copyingColorID = 1005;
+				else if (playerColor == 2)
+					col._copyingColorID = 1006;
+				break;
+			}
+			case 5:
+				col._blending = GameToolbox::stoi(innerData[j + 1]) != 0;
+				break;
+			case 6:
+				key = GameToolbox::stoi(innerData[j + 1]);
+				break;
+			case 7:
+				col._opacity = GameToolbox::stof(innerData[j + 1]) * 255.f;
+				break;
+			case 9:
+			{
+				const int copyId = GameToolbox::stoi(innerData[j + 1]);
+				if (copyId > 0)
+					col._copyingColorID = copyId;
+				break;
+			}
+			case 10:
+			{
+				auto hsv = GameToolbox::splitByDelimStringView(innerData[j + 1], 'a');
+				if (hsv.size() >= 5)
+				{
+					col._hsvModifier.h = GameToolbox::stof(hsv[0]);
+					col._hsvModifier.s = GameToolbox::stof(hsv[1]);
+					col._hsvModifier.v = GameToolbox::stof(hsv[2]);
+					col._hsvModifier.sChecked = GameToolbox::stoi(hsv[3]) != 0;
+					col._hsvModifier.vChecked = GameToolbox::stoi(hsv[4]) != 0;
+					col._applyHsv = true;
+				}
+				break;
+			}
+			}
+		}
+
+		if (key != 0)
+			_colorChannels[key] = col;
+	}
+}
+
+ax::Color3B BaseGameLayer::colorForChannel(int id) const
+{
+	auto it = _colorChannels.find(id);
+	if (it == _colorChannels.end())
+		return ax::Color3B::WHITE;
+
+	const SpriteColor* col = &it->second;
+	ax::Color3B result = col->_color;
+	int copyId = col->_copyingColorID;
+	int guard = 0;
+	while (copyId != -1 && guard++ < 8)
+	{
+		auto copyIt = _colorChannels.find(copyId);
+		if (copyIt == _colorChannels.end() || &copyIt->second == col)
+			break;
+		result = copyIt->second._color;
+		if (copyIt->second._copyingColorID == -1 || copyIt->second._copyingColorID == copyId)
+			break;
+		copyId = copyIt->second._copyingColorID;
+	}
+
+	if (col->_applyHsv)
+		GameToolbox::applyHSV(col->_hsvModifier, &result);
+
+	return result;
 }
 
 int BaseGameLayer::sectionForPos(float x)
@@ -454,12 +668,9 @@ void BaseGameLayer::processMoveActions(float dt)
 		float x, y;
 		if (!this->_groups.contains(dictObject.first))
 		{
-			GroupProperties gp;
-			this->_groups.insert({dictObject.first, gp});
-			currentGroup = &gp;
+			this->_groups.insert({dictObject.first, GroupProperties{}});
 		}
-		else
-			currentGroup = &this->_groups[dictObject.first];
+		currentGroup = &this->_groups[dictObject.first];
 		x = dictObject.second->_newPosOptimized.x;
 		y = dictObject.second->_newPosOptimized.y;
 
@@ -467,6 +678,8 @@ void BaseGameLayer::processMoveActions(float dt)
 		{
 			for (auto obj : currentGroup->_objects)
 			{
+				if (!obj)
+					continue;
 				if (!obj->_unkbool)
 				{
 					obj->_firstPosition.x = obj->_startPosition.x + obj->_startPosOffset.x;
@@ -475,25 +688,29 @@ void BaseGameLayer::processMoveActions(float dt)
 				}
 
 				if (y != 0)
-				{
 					obj->_startPosOffset.y += y;
-				}
+				if (x != 0)
+					obj->_startPosOffset.x += x;
+				if (!obj->_isTrigger)
+					obj->setPosition(obj->getStartPosition() + obj->_startPosOffset);
+
 				if (x != 0)
 				{
-					obj->_startPosOffset.x += x;
 
 					int sectionSize = this->_sectionObjects.size();
 					auto section = BaseGameLayer::sectionForPos(obj->_startPosition.x + obj->_startPosOffset.x);
 					section = section - 1 < 0 ? 0 : section - 1;
 					if (obj->_section != section)
 					{
-						auto vec = &this->_sectionObjects[obj->_section];
-						auto newEnd = std::partition(vec->begin(), vec->end(), [&](GameObject* a) { return a != obj; });
-						vec->resize(newEnd - vec->begin());
+						if (obj->_section >= 0 && obj->_section < sectionSize)
+						{
+							auto vec = &this->_sectionObjects[obj->_section];
+							auto newEnd = std::partition(vec->begin(), vec->end(), [&](GameObject* a) { return a != obj; });
+							vec->resize(newEnd - vec->begin());
+						}
 						while (section >= sectionSize)
 						{
-							std::vector<GameObject*> vec;
-							this->_sectionObjects.push_back(vec);
+							this->_sectionObjects.push_back({});
 							sectionSize++;
 						}
 						this->_sectionObjects[section].push_back(obj);
@@ -505,9 +722,24 @@ void BaseGameLayer::processMoveActions(float dt)
 	}
 }
 
-void BaseGameLayer::runMoveCommand(float duration, ax::Point offsetPos, int easeType, float easeAmt, int groupID)
+void BaseGameLayer::runMoveCommand(float duration, ax::Point offsetPos, int easeType, float easeAmt, int groupID,
+								  bool lockToPlayerX, bool lockToPlayerY)
 {
-	this->_effectManager->runMoveCommand(duration, offsetPos, easeType, easeAmt, groupID);
+	if (_effectManager)
+		this->_effectManager->runMoveCommand(duration, offsetPos, easeType, easeAmt, groupID, lockToPlayerX,
+											 lockToPlayerY);
+}
+
+void BaseGameLayer::runFollowCommand(float duration, int groupID, bool followX, bool followY)
+{
+	if (_effectManager)
+		_effectManager->runFollowCommand(duration, groupID, followX, followY);
+}
+
+void BaseGameLayer::stopGroupActions(int groupID)
+{
+	if (_effectManager)
+		_effectManager->stopGroupActions(groupID);
 }
 
 void BaseGameLayer::processMoveActionsStep(float dt)

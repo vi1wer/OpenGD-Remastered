@@ -34,8 +34,11 @@
 #include "GameToolbox/log.h"
 #include "GameToolbox/getTextureString.h"
 #include "GameToolbox/rand.h"
+#include "GameToolbox/conv.h"
+#include "platform/FileUtils.h"
 
 #include "fmt/format.h"
+#include <algorithm>
 
 USING_NS_AX;
 
@@ -120,7 +123,7 @@ constexpr static auto splashes = std::to_array <const char*>({
 
 constexpr static auto pngs = std::to_array<const char*>({
 	"GJ_GameSheetGlow.png", "GJ_GameSheet04.png", "GJ_GameSheet03.png", "GJ_GameSheet02.png", "GJ_GameSheet.png", "GJ_gradientBG.png", "edit_barBG_001.png", "GJ_button_01.png",
-	"gravityOverlay.png", "goldFont.png", "bigFont.png", "chatFont.png", "CCControlColourPickerSpriteSheet.png", "GJ_ShopSheet.png", "SecretSheet.png"
+	"gravityOverlay.png", "goldFont.png", "bigFont.png", "chatFont.png", "CCControlColourPickerSpriteSheet.png", "GJ_ShopSheet.png", "GJ_ShopSheet01.png", "SecretSheet.png", "PixelSheet_01.png"
 });
 
 constexpr static auto fonts = std::to_array<const char*>({
@@ -129,7 +132,7 @@ constexpr static auto fonts = std::to_array<const char*>({
 
 constexpr static auto plists = std::to_array<const char*>({
 	"GJ_GameSheetGlow.plist", "GJ_GameSheet.plist", "CCControlColourPickerSpriteSheet.plist", "GJ_GameSheet02.plist", "GJ_GameSheet03.plist",
-	"GJ_GameSheet04.plist", "GJ_ShopSheet.plist", "SecretSheet.plist",
+	"GJ_GameSheet04.plist", "GJ_ShopSheet.plist", "GJ_ShopSheet01.plist", "SecretSheet.plist", "PixelSheet_01.plist",
 });
 	
 	
@@ -157,7 +160,7 @@ bool LoadingLayer::init() {
 	_sprFrameCache->removeSpriteFrames();
 	_textureCache->removeAllTextures();
 
-	size_t totalAssets = fonts.size() + plists.size() + pngs.size() + getPlayerIconsSize() + getShipIconsSize() + getPlayerBallIconsSize() + getBirdIconsSize();
+	size_t totalAssets = fonts.size() + plists.size() + pngs.size() + static_cast<size_t>(getTotalIconPlists());
 	this->m_nTotalAssets = static_cast<int>(totalAssets);
 	
 	_textureCache->addImage(GameToolbox::getTextureString("GJ_LaunchSheet.png"));
@@ -210,87 +213,108 @@ bool LoadingLayer::init() {
 void LoadingLayer::loadAssets() {
 	
 	for(auto image : pngs) {
-		GameToolbox::log("image {}", image);
-		_textureCache->addImageAsync(GameToolbox::getTextureString(image), AX_CALLBACK_1(LoadingLayer::assetLoaded, this));
+		_textureCache->addImageAsync(GameToolbox::getTextureString(image), [this](Texture2D*) {
+			this->assetLoaded();
+		});
 	}
 	
 	for(auto plist : plists) {
-		GameToolbox::log("plist {}", plist);
 		_sprFrameCache->addSpriteFramesWithFile(GameToolbox::getTextureString(plist));
-		this->assetLoaded(nullptr);
+		this->assetLoaded();
 	}
 	
 	for(auto fnt : fonts) {
-		GameToolbox::log("font {}", fnt);
 		Label::createWithBMFont(GameToolbox::getTextureString(fnt), "someText");
-		this->assetLoaded(nullptr);
+		this->assetLoaded();
 	}
 
-	loadIcons();
+	startIconLoading();
 }
 
-void LoadingLayer::assetLoaded(ax::Object*)
+void LoadingLayer::assetLoaded()
 {
-	
-	this->m_nAssetsLoaded++;
-	GameToolbox::log("loading asset {} out of {}", (int)m_nAssetsLoaded, (int)m_nTotalAssets);
-	_pBar->setPercentage((m_nAssetsLoaded / m_nTotalAssets)*100.f);
+	if (_finished)
+		return;
 
-	if(m_nAssetsLoaded == m_nTotalAssets) {
+	this->m_nAssetsLoaded++;
+	if (_pBar && m_nTotalAssets > 0.f)
+		_pBar->setPercentage((m_nAssetsLoaded / m_nTotalAssets) * 100.f);
+
+	if (m_nAssetsLoaded >= m_nTotalAssets)
+	{
+		_finished = true;
+		this->unschedule("load_icons");
 		Director::getInstance()->replaceScene(MenuLayer::scene());
 	}
 }
 
-void LoadingLayer::loadIcons()
+int LoadingLayer::getIconPlistCount(int from, int to)
 {
-	for (int i = 0; i < getPlayerIconsSize(); i++) {
-		std::string plist = StringUtils::format("player_%02d.plist", i);
-
-		GameToolbox::log("player icon plist {}", plist);
-
-		_sprFrameCache->addSpriteFramesWithFile(GameToolbox::getTextureString(plist));
-		this->assetLoaded(nullptr);
-	}
-	for (int i = 0; i < getShipIconsSize(); i++) {
-		std::string plist = StringUtils::format("ship_%02d.plist", i);
-
-		GameToolbox::log("ship icon plist {}", plist);
-
-		_sprFrameCache->addSpriteFramesWithFile(GameToolbox::getTextureString(plist));
-		this->assetLoaded(nullptr);
-	}
-	for (int i = 0; i < getPlayerBallIconsSize(); i++) {
-		std::string plist = StringUtils::format("player_ball_%02d.plist", i);
-
-		GameToolbox::log("player ball icon plist {}", plist);
-
-		_sprFrameCache->addSpriteFramesWithFile(GameToolbox::getTextureString(plist));
-		this->assetLoaded(nullptr);
-	}
-	for (int i = 0; i < getBirdIconsSize(); i++) {
-		std::string plist = StringUtils::format("bird_%02d.plist", i);
-
-		GameToolbox::log("bird icon plist {}", plist);
-
-		_sprFrameCache->addSpriteFramesWithFile(GameToolbox::getTextureString(plist));
-		this->assetLoaded(nullptr);
-	}
+	return std::max(0, to - from + 1);
 }
 
-int LoadingLayer::getPlayerIconsSize()
+int LoadingLayer::getTotalIconPlists()
 {
-	return 135;
-	// return 14;
+	return getIconPlistCount(0, GameToolbox::getValueForGamemode(IconType::kIconTypeCube))
+		 + getIconPlistCount(1, GameToolbox::getValueForGamemode(IconType::kIconTypeShip))
+		 + getIconPlistCount(0, GameToolbox::getValueForGamemode(IconType::kIconTypeBall))
+		 + getIconPlistCount(1, GameToolbox::getValueForGamemode(IconType::kIconTypeUfo))
+		 + getIconPlistCount(1, GameToolbox::getValueForGamemode(IconType::kIconTypeWave))
+		 + getIconPlistCount(1, GameToolbox::getValueForGamemode(IconType::kIconTypeRobot))
+		 + getIconPlistCount(1, GameToolbox::getValueForGamemode(IconType::kIconTypeSpider))
+		 + getIconPlistCount(1, GameToolbox::getValueForGamemode(IconType::kIconTypeSwing))
+		 + getIconPlistCount(1, GameToolbox::getValueForGamemode(IconType::kIconTypeJetpack));
 }
-int LoadingLayer::getShipIconsSize()
+
+void LoadingLayer::buildIconQueue()
 {
-	return 51;
+	_iconPlists.clear();
+	_iconPlists.reserve(static_cast<std::size_t>(getTotalIconPlists()));
+
+	auto pushRange = [this](const char* prefix, int from, int to) {
+		for (int i = from; i <= to; ++i)
+			_iconPlists.push_back(StringUtils::format("%s_%02d.plist", prefix, i));
+	};
+
+	pushRange("player", 0, GameToolbox::getValueForGamemode(IconType::kIconTypeCube));
+	pushRange("ship", 1, GameToolbox::getValueForGamemode(IconType::kIconTypeShip));
+	pushRange("player_ball", 0, GameToolbox::getValueForGamemode(IconType::kIconTypeBall));
+	pushRange("bird", 1, GameToolbox::getValueForGamemode(IconType::kIconTypeUfo));
+	pushRange("dart", 1, GameToolbox::getValueForGamemode(IconType::kIconTypeWave));
+	pushRange("robot", 1, GameToolbox::getValueForGamemode(IconType::kIconTypeRobot));
+	pushRange("spider", 1, GameToolbox::getValueForGamemode(IconType::kIconTypeSpider));
+	pushRange("swing", 1, GameToolbox::getValueForGamemode(IconType::kIconTypeSwing));
+	pushRange("jetpack", 1, GameToolbox::getValueForGamemode(IconType::kIconTypeJetpack));
 }
-int LoadingLayer::getPlayerBallIconsSize()
+
+void LoadingLayer::startIconLoading()
 {
-	return 43;
+	buildIconQueue();
+	_iconLoadIndex = 0;
+	// Load a chunk every frame so the progress bar can redraw.
+	this->schedule([this](float dt) { this->loadIconBatch(dt); }, "load_icons");
 }
-int LoadingLayer::getBirdIconsSize()
+
+void LoadingLayer::loadIconBatch(float /*dt*/)
 {
-	return 35;
+	if (_finished || _iconLoadIndex >= _iconPlists.size())
+	{
+		this->unschedule("load_icons");
+		return;
+	}
+
+	auto* fu = FileUtils::getInstance();
+	constexpr int kIconsPerFrame = 12;
+	int loadedThisFrame = 0;
+
+	while (_iconLoadIndex < _iconPlists.size() && loadedThisFrame < kIconsPerFrame)
+	{
+		const std::string& plist = _iconPlists[_iconLoadIndex++];
+		std::string path = GameToolbox::getTextureString(plist);
+		if (fu->isFileExist(path) || fu->isFileExist(plist))
+			_sprFrameCache->addSpriteFramesWithFile(path);
+
+		this->assetLoaded();
+		++loadedThisFrame;
+	}
 }

@@ -37,17 +37,25 @@
 
 #include "LevelDebugLayer.h"
 #include "UILayer.h"
+#include "PauseLayer.h"
 #include "GJGameLevel.h"
 #include "GroundLayer.h"
 #include "SimpleProgressBar.h"
 #include "CircleWave.h"
+#include "2d/SpriteFrameCache.h"
+#include "2d/ParticleSystemQuad.h"
+#include "platform/FileUtils.h"
 #include "GameToolbox/log.h"
 #include "GameToolbox/getTextureString.h"
 #include "GameToolbox/rand.h"
 #include "GameToolbox/math.h"
 #include "GameToolbox/conv.h"
 #include "GameToolbox/nodes.h"
+#include "GameManager.h"
+#include "EffectManager.h"
+#include "GameToolbox/enums.h"
 
+#include <algorithm>
 
 USING_NS_AX;
 USING_NS_AX_EXT;
@@ -172,345 +180,172 @@ PlayLayer* PlayLayer::create(GJGameLevel* level)
 
 void PlayLayer::loadLevel(std::string_view levelStr)
 {
-
 	std::vector<std::string_view> objData = GameToolbox::splitByDelimStringView(levelStr, ';');
-	std::vector<std::string_view> levelData = GameToolbox::splitByDelimStringView(objData[0], ',');
-	
-	objData.erase(objData.begin());
-	
-	std::thread t_colorChannels([&]()
-	{
-		for (size_t i = 0; i < levelData.size() - 1; i += 2)
-		{
-			if (levelData[i] == "kS1")
-			{
-				_colorChannels.insert({1000, SpriteColor(ax::Color3B(GameToolbox::stof(levelData[i + 1]), 0, 0), 255, 0)});
-			}
-			else if (levelData[i] == "kS2")
-			{
-				_colorChannels.at(1000)._color.g = GameToolbox::stof(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kS3")
-			{
-				_colorChannels.at(1000)._color.b = GameToolbox::stof(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kS4")
-			{
-				_colorChannels.insert({1001, SpriteColor(ax::Color3B(GameToolbox::stof(levelData[i + 1]), 0, 0), 255, 0)});
-			}
-			else if (levelData[i] == "kS5")
-			{
-				_colorChannels.at(1001)._color.g = GameToolbox::stof(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kS6")
-			{
-				_colorChannels.at(1001)._color.b = GameToolbox::stof(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kS29")
-			{
-				auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
-				fillColorChannel(colorString, 1000);
-			}
-			else if (levelData[i] == "kS30")
-			{
-				auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
-				fillColorChannel(colorString, 1001);
-			}
-			else if (levelData[i] == "kS31")
-			{
-				auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
-				fillColorChannel(colorString, 1002);
-			}
-			else if (levelData[i] == "kS32")
-			{
-				auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
-				fillColorChannel(colorString, 1004);
-			}
-			else if (levelData[i] == "kS37")
-			{
-				auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
-				fillColorChannel(colorString, 1003);
-			}
-			else if (levelData[i] == "kS38")
-			{
-				auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '|');
-				for (std::string_view colorData : colorString)
-				{
-					auto innerData = GameToolbox::splitByDelimStringView(colorData, '_');
-					int key;
-					SpriteColor col;
-					col._blending = false;
-					for (size_t j = 0; j < innerData.size() - 1; j += 2)
-					{
-						switch (GameToolbox::stoi(innerData[j]))
-						{
-						case 1:
-							col._color.r = GameToolbox::stof(innerData[j + 1]);
-							break;
-						case 2:
-							col._color.g = GameToolbox::stof(innerData[j + 1]);
-							break;
-						case 3:
-							col._color.b = GameToolbox::stof(innerData[j + 1]);
-							break;
-						case 5:
-							col._blending = GameToolbox::stoi(innerData[j + 1]);
-							break;
-						case 6:
-							key = GameToolbox::stoi(innerData[j + 1]);
-							break;
-						case 7:
-							col._opacity = GameToolbox::stof(innerData[j + 1]) * 255.f;
-							break;
-						}
-					}
-					_colorChannels.insert({key, col});
-				}
-			}
-			else if (levelData[i] == "kA6")
-			{
-				_bgID = GameToolbox::stoi(levelData[i + 1]);
-				if (!_bgID) _bgID = 1;
-			}
-			else if (levelData[i] == "kA7")
-			{
-				_groundID = GameToolbox::stoi(levelData[i + 1]);
-				if (!_groundID) _groundID = 1;
-			}
-			else if (levelData[i] == "kA2")
-			{
-				_levelSettings.gamemode = (PlayerGamemode)GameToolbox::stoi(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kA3")
-			{
-				_levelSettings.mini = GameToolbox::stoi(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kA4")
-			{
-				_levelSettings.speed = GameToolbox::stoi(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kA8")
-			{
-				_levelSettings.dual = GameToolbox::stoi(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kA10")
-			{
-				_levelSettings.twoPlayer = GameToolbox::stoi(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kA11")
-			{
-				_levelSettings.flipGravity = GameToolbox::stoi(levelData[i + 1]);
-			}
-			else if (levelData[i] == "kA13")
-			{
-				_levelSettings.songOffset = GameToolbox::stof(levelData[i + 1]);
-			}
-			
-		} //for (size_t i = 0; i < levelData.size() - 1; i += 2)
-		
-	}); //thread
-	
-	t_colorChannels.join();
+	if (objData.empty())
+		return;
 
-	if (!_colorChannels.contains(1004)) {
-		_colorChannels[1004] = {ax::Color3B::WHITE, 255, false};
+	std::vector<std::string_view> levelData = GameToolbox::splitByDelimStringView(objData[0], ',');
+	objData.erase(objData.begin());
+
+	_colorChannels[1000] = SpriteColor(ax::Color3B::WHITE, 255, false);
+	_colorChannels[1001] = SpriteColor(ax::Color3B::WHITE, 255, false);
+
+	for (size_t i = 0; i + 1 < levelData.size(); i += 2)
+	{
+		if (levelData[i] == "kS1")
+		{
+			_colorChannels[1000]._color.r = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
+		}
+		else if (levelData[i] == "kS2")
+		{
+			_colorChannels[1000]._color.g = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
+		}
+		else if (levelData[i] == "kS3")
+		{
+			_colorChannels[1000]._color.b = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
+		}
+		else if (levelData[i] == "kS4")
+		{
+			_colorChannels[1001]._color.r = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
+		}
+		else if (levelData[i] == "kS5")
+		{
+			_colorChannels[1001]._color.g = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
+		}
+		else if (levelData[i] == "kS6")
+		{
+			_colorChannels[1001]._color.b = static_cast<uint8_t>(GameToolbox::stof(levelData[i + 1]));
+		}
+		else if (levelData[i] == "kS29")
+		{
+			auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
+			fillColorChannel(colorString, 1000);
+		}
+		else if (levelData[i] == "kS30")
+		{
+			auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
+			fillColorChannel(colorString, 1001);
+		}
+		else if (levelData[i] == "kS31")
+		{
+			auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
+			fillColorChannel(colorString, 1002);
+		}
+		else if (levelData[i] == "kS32")
+		{
+			auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
+			fillColorChannel(colorString, 1004);
+		}
+		else if (levelData[i] == "kS37")
+		{
+			auto colorString = GameToolbox::splitByDelimStringView(levelData[i + 1], '_');
+			fillColorChannel(colorString, 1003);
+		}
+		else if (levelData[i] == "kS38")
+		{
+			parseColorChannelList(levelData[i + 1]);
+		}
+		else if (levelData[i] == "kA6")
+		{
+			_bgID = GameToolbox::stoi(levelData[i + 1]);
+			if (!_bgID)
+				_bgID = 1;
+			_levelSettings._bgID = _bgID;
+		}
+		else if (levelData[i] == "kA7")
+		{
+			_groundID = GameToolbox::stoi(levelData[i + 1]);
+			if (!_groundID)
+				_groundID = 1;
+			_levelSettings._groundID = _groundID;
+		}
+		else if (levelData[i] == "kA2")
+		{
+			int mode = GameToolbox::stoi(levelData[i + 1]);
+			if (mode < 0 || mode > static_cast<int>(PlayerGamemodeSwing))
+				mode = 0;
+			_levelSettings.gamemode = static_cast<PlayerGamemode>(mode);
+		}
+		else if (levelData[i] == "kA3")
+		{
+			_levelSettings.mini = GameToolbox::stoi(levelData[i + 1]);
+		}
+		else if (levelData[i] == "kA4")
+		{
+			_levelSettings.speed = GameToolbox::stoi(levelData[i + 1]);
+		}
+		else if (levelData[i] == "kA8")
+		{
+			_levelSettings.dual = GameToolbox::stoi(levelData[i + 1]);
+		}
+		else if (levelData[i] == "kA10")
+		{
+			_levelSettings.twoPlayer = GameToolbox::stoi(levelData[i + 1]);
+		}
+		else if (levelData[i] == "kA11")
+		{
+			_levelSettings.flipGravity = GameToolbox::stoi(levelData[i + 1]);
+		}
+		else if (levelData[i] == "kA13")
+		{
+			_levelSettings.songOffset = GameToolbox::stof(levelData[i + 1]);
+		}
+		else if (levelData[i] == "kA22")
+		{
+			_levelSettings.platformer = GameToolbox::stoi(levelData[i + 1]) != 0;
+		}
 	}
-	
-	//STOP
-	std::thread t_gameObjects([&]() {
+
+	if (!_colorChannels.contains(1004))
+		_colorChannels[1004] = {ax::Color3B::WHITE, 255, false};
+
+	if (_player1)
+	{
 		_colorChannels[1005]._color = _player1->getMainColor();
 		_colorChannels[1005]._blending = true;
 		_colorChannels[1006]._color = _player1->getSecondaryColor();
 		_colorChannels[1006]._blending = true;
-		_colorChannels[1010]._color = Color3B::BLACK;
-		_colorChannels[1007]._color = getLightBG();
+	}
+	_colorChannels[1010]._color = Color3B::BLACK;
+	_colorChannels[1007]._color = getLightBG();
+	_originalColors = _colorChannels;
 
-		_originalColors = _colorChannels;
+	if (!objData.empty())
+	{
+		const auto& last = objData.back();
+		if (last.empty() || last.front() != '1' || (last.size() > 1 && last[1] != ','))
+			objData.pop_back();
+	}
 
-		for (std::string_view data : objData)
+	for (std::string_view data : objData)
+	{
+		if (data.empty())
+			continue;
+
+		GameObject* obj = GameObject::createFromString(data);
+		if (!obj)
+			continue;
+
+		if (obj->_isTrigger)
 		{
-			auto d = GameToolbox::splitByDelimStringView(data, ',');
-
-			GameObject* obj = nullptr;
-
-			Hitbox hb = {0, 0, 0, 0};
-
-			for (size_t i = 0; i < d.size() - 1; i += 2)
-			{
-				int key = GameToolbox::stoi(d[i]);
-
-				if (key != 1 && obj == nullptr)
-					break;
-
-				switch (key)
-				{
-				case 1:
-				{
-					int id = GameToolbox::stoi(d[i + 1]);
-
-					if (!GameObject::_pBlocks.contains(id))
-						continue;
-
-					std::string_view frame = GameObject::_pBlocks.at(id);
-
-					if (std::find(std::begin(GameObject::_pTriggers), std::end(GameObject::_pTriggers), id) !=
-						std::end(GameObject::_pTriggers))
-					{
-						obj = EffectGameObject::create(frame);
-						obj->_isTrigger = true;
-					}
-					else
-						obj = GameObject::create(frame, GameObject::getGlowFrame(id));
-
-					if (obj == nullptr)
-						break;
-
-					AX_SAFE_RETAIN(obj);
-
-					obj->setStretchEnabled(false);
-					obj->setActive(true);
-					obj->setID(id);
-
-					// obj->setupColors();
-
-					obj->customSetup();
-
-					if (GameObject::_pHitboxes.contains(id))
-						hb = GameObject::_pHitboxes.at(id);
-					if (GameObject::_pHitboxRadius.contains(id))
-						obj->_radius = GameObject::_pHitboxRadius.at(id);
-
-					obj->_uniqueID = _pObjects.size();
-
-					_pObjects.push_back(obj);
-				}
-				break;
-				case 2:
-					obj->setPositionX(GameToolbox::stof(d[i + 1]));
-					break;
-				case 3:
-					obj->setPositionY(GameToolbox::stof(d[i + 1]) + 90.0f);
-					break;
-				case 4:
-					obj->setScaleX(-1.f * GameToolbox::stoi(d[i + 1]));
-					break;
-				case 5:
-					obj->setScaleY(-1.f * GameToolbox::stoi(d[i + 1]));
-					break;
-				case 6:
-					obj->setRotation(GameToolbox::stof(d[i + 1]));
-					break;
-				case 7:
-					dynamic_cast<EffectGameObject*>(obj)->_color.r = GameToolbox::stof(d[i + 1]);
-					break;
-				case 8:
-					dynamic_cast<EffectGameObject*>(obj)->_color.g = GameToolbox::stof(d[i + 1]);
-					break;
-				case 9:
-					dynamic_cast<EffectGameObject*>(obj)->_color.b = GameToolbox::stof(d[i + 1]);
-					break;
-				case 10:
-					dynamic_cast<EffectGameObject*>(obj)->_duration = GameToolbox::stof(d[i + 1]);
-					break;
-				case 21:
-					obj->_mainColorChannel = GameToolbox::stoi(d[i + 1]);
-					break;
-				case 22:
-					obj->_secColorChannel = GameToolbox::stoi(d[i + 1]);
-					break;
-				case 23:
-					dynamic_cast<EffectGameObject*>(obj)->_targetColorId = GameToolbox::stof(d[i + 1]);
-					break;
-				case 24:
-					obj->_zLayer = GameToolbox::stoi(d[i + 1]);
-					break;
-				case 25:
-					obj->setGlobalZOrder(GameToolbox::stoi(d[i + 1]));
-					break;
-				case 32:
-					obj->setScaleX(obj->getScaleX() * GameToolbox::stof(d[i + 1]));
-					obj->setScaleY(obj->getScaleY() * GameToolbox::stof(d[i + 1]));
-					break;
-				case 35:
-					dynamic_cast<EffectGameObject*>(obj)->_opacity = GameToolbox::stof(d[i + 1]);
-					break;
-				case 45:
-					dynamic_cast<EffectGameObject*>(obj)->_fadeIn = GameToolbox::stof(d[i + 1]);
-					break;
-				case 46:
-					dynamic_cast<EffectGameObject*>(obj)->_hold = GameToolbox::stof(d[i + 1]);
-					break;
-				case 47:
-					dynamic_cast<EffectGameObject*>(obj)->_fadeOut = GameToolbox::stof(d[i + 1]);
-					break;
-				case 48:
-					dynamic_cast<EffectGameObject*>(obj)->_pulseMode = GameToolbox::stoi(d[i + 1]);
-					break;
-				case 49: {
-					auto hsv = GameToolbox::splitByDelimStringView(d[i + 1], 'a');
-					auto trigger = dynamic_cast<EffectGameObject*>(obj);
-					trigger->_hsv.h = GameToolbox::stof(hsv[0]);
-					trigger->_hsv.s = GameToolbox::stof(hsv[1]);
-					trigger->_hsv.v = GameToolbox::stof(hsv[2]);
-					trigger->_hsv.sChecked = GameToolbox::stof(hsv[3]);
-					trigger->_hsv.vChecked = GameToolbox::stof(hsv[4]);
-				}
-				break;
-				case 50:
-					dynamic_cast<EffectGameObject*>(obj)->_copiedColorId = GameToolbox::stoi(d[i + 1]);
-					break;
-				case 52:
-					dynamic_cast<EffectGameObject*>(obj)->_pulseType = GameToolbox::stoi(d[i + 1]);
-					break;
-				case 51:
-					if (obj->_isTrigger)
-						dynamic_cast<EffectGameObject*>(obj)->_targetGroupId = GameToolbox::stoi(d[i + 1]);
-					break;
-				case 57: {
-					auto groups = GameToolbox::splitByDelimStringView(data, '.');
-					for (auto group : groups)
-					{
-						int g = GameToolbox::stoi(group);
-						_groups[g]._objects.push_back(obj);
-						obj->_groups.push_back(g);
-					}
-					break;
-				}
-				case 67: // dont enter
-				case 64: // dont exit
-					obj->setDontTransform(true);
-					break;
-				}
-			}
-			if (obj)
-			{
-				ax::Mat4 tr;
-				ax::Rect rec = {hb.x, hb.y, hb.w, hb.h};
-				switch (obj->getGameObjectType())
-				{
-				default:
-
-					tr.rotate(obj->getRotationQuat());
-
-					tr.scale(obj->getScaleX() * (obj->isFlippedX() ? -1.f : 1.f),
-							obj->getScaleY() * (obj->isFlippedY() ? -1.f : 1.f), 1);
-
-					rec = RectApplyTransform(rec, tr);
-
-					obj->setOuterBounds(Rect(obj->getPosition() + Vec2(rec.origin.x, rec.origin.y) + Vec2(15, 15),
-											{rec.size.width, rec.size.height}));
-					break;
-				case kGameObjectTypeDecoration:
-				case kGameObjectTypeSpecial:
-					break;
-				}
-				obj->setStartPosition(obj->getPosition());
-				obj->setStartScaleX(obj->getScaleX());
-				obj->setStartScaleY(obj->getScaleY());
-			}
+			obj->setVisible(false);
+			obj->setOpacity(0);
 		}
-	});
-	t_gameObjects.join();
+
+		obj->_uniqueID = static_cast<int>(_pObjects.size());
+		_pObjects.push_back(obj);
+	}
+	GameToolbox::log("PlayLayer created {} objects", _pObjects.size());
+
+	_coinsCollected.clear();
+	int coinIndex = 0;
+	for (GameObject* obj : _pObjects)
+	{
+		if (!obj || !obj->isCoin())
+			continue;
+		obj->_coinIndex = coinIndex++;
+	}
+	_coinsCollected.assign(std::max(coinIndex, 0), false);
 }
 
 void PlayLayer::setInstance() {
@@ -535,53 +370,64 @@ bool PlayLayer::init(GJGameLevel* level)
 	auto winSize = Director::getInstance()->getWinSize();
 
 	dn = ax::DrawNode::create();
-	dn->setPosition({-15, -15});
 	addChild(dn, 99999);
 
 	initBatchNodes();
 
-	this->_player1 = PlayerObject::create(GameToolbox::randomInt(1, 12), this);
+	cameraFollow = ax::Node::create();
+	this->addChild(cameraFollow, 100);
+
+	auto gm = GameManager::getInstance();
+	int playerIcon = gm->getSelectedIcon(IconType::kIconTypeCube);
+	if (playerIcon < 1)
+		playerIcon = 1;
+
+	this->_player1 = PlayerObject::create(playerIcon, this);
 	this->_player1->setPosition({-20, 105});
-	_main2BatchNode->addChild(this->_player1, 3);
-	this->_player1->setAnchorPoint({0, 0});
+	this->addChild(this->_player1, 101);
 
-	_player1->setMainColor({125, 255, 0});
-	_player1->setSecondaryColor({0, 255, 255});
-
-	this->_player2 = PlayerObject::create(GameToolbox::randomInt(1, 12), this);
+	this->_player2 = PlayerObject::create(playerIcon, this);
 	this->_player2->setPosition({-20, 105});
-	_main2BatchNode->addChild(this->_player2, 3);
-	this->_player2->setAnchorPoint({0, 0});
+	this->addChild(this->_player2, 101);
 
-	_player2->setMainColor({125, 255, 0});
-	_player2->setSecondaryColor({0, 255, 255});
+	_player1->setMainColor(gm->getPlayerMainColor());
+	_player1->setSecondaryColor(gm->getPlayerSecondaryColor());
+	_player1->setGlowColor(gm->getPlayerGlowColor());
+	_player1->setGlow(gm->isPlayerGlowEnabled());
+	_player2->setMainColor(gm->getPlayerMainColor());
+	_player2->setSecondaryColor(gm->getPlayerSecondaryColor());
+	_player2->setGlowColor(gm->getPlayerGlowColor());
+	_player2->setGlow(gm->isPlayerGlowEnabled());
+	_player2->setVisible(false);
+	_player2->setActive(false);
 
 	// std::string levelStr = FileUtils::getInstance()->getStringFromFile("level.txt");
 	std::string levelStr = level->_levelString;
 
 	if (levelStr.empty())
+		levelStr = GJGameLevel::getLevelStrFromID(level->_levelID);
+	else if (levelStr.front() != 'k')
 	{
-		nlohmann::json file = nlohmann::json::parse(FileUtils::getInstance()->getStringFromFile("Custom/mainLevels.json"));
-		if (file.contains(std::to_string(level->_levelID))) {
-			levelStr = fmt::format("H4sIAAAAAAAAA{}", file[std::to_string(level->_levelID)].get<std::string>());
-		}
+		std::string decompressed = GJGameLevel::decompressLvlStr(levelStr);
+		levelStr = decompressed.empty() ? GJGameLevel::getLevelStrFromID(level->_levelID) : std::move(decompressed);
 	}
+	if (levelStr.empty() && level->_levelID >= 1 && level->_levelID <= 22)
+		levelStr = GJGameLevel::getLevelStrFromID(level->_levelID);
+	if (!levelStr.empty())
+		level->_levelString = levelStr;
+	GameToolbox::log("PlayLayer load id={} name='{}' str={} bytes", level->_levelID, level->_levelName, levelStr.size());
 
 	// scope based timer
 	{
 		auto s = BenchmarkTimer("load level");
-		if (!levelStr.empty()) {
-			if (levelStr.at(0) != 'k') levelStr = GJGameLevel::decompressLvlStr(levelStr);
+		if (!levelStr.empty())
 			loadLevel(levelStr);
-		}
 	}
 
 	this->_bottomGround = GroundLayer::create(_groundID);
 	this->_ceiling = GroundLayer::create(_groundID);
-	cameraFollow = ax::Node::create();
 	cameraFollow->addChild(this->_bottomGround, 1);
 	cameraFollow->addChild(this->_ceiling, 1);
-	this->addChild(cameraFollow, 100);
 
 	this->_ceiling->setScaleY(-1);
 	_ceiling->setVisible(false);
@@ -594,15 +440,19 @@ bool PlayLayer::init(GJGameLevel* level)
 		this->m_pBG = Sprite::create(GameToolbox::getTextureString(fmt::format("game_bg_{:02}_001.png", 1)));
 	}
 	m_pBG->setStretchEnabled(false);
-	const Texture2D::TexParams texParams = {backend::SamplerFilter::LINEAR, backend::SamplerFilter::LINEAR,
-											backend::SamplerAddressMode::REPEAT, backend::SamplerAddressMode::REPEAT};
-	this->m_pBG->getTexture()->setTexParameters(texParams);
+	if (auto* tex = this->m_pBG->getTexture())
+	{
+		const Texture2D::TexParams texParams = {
+			backend::SamplerFilter::LINEAR, backend::SamplerFilter::LINEAR,
+			backend::SamplerAddressMode::REPEAT, backend::SamplerAddressMode::REPEAT};
+		tex->setTexParameters(texParams);
+	}
 	this->m_pBG->setTextureRect(Rect(0, 0, 1024 * 5, 1024));
 	this->m_pBG->setPosition(winSize.x / 2, winSize.y / 4);
 	this->addChild(this->m_pBG, -100);
 
 	if (this->_colorChannels.contains(1000))
-		this->m_pBG->setColor(this->_colorChannels.at(1000)._color);
+		this->m_pBG->setColor(colorForChannel(1000));
 	this->_bottomGround->update(0);
 
 	if (_pObjects.size() != 0)
@@ -628,7 +478,11 @@ bool PlayLayer::init(GJGameLevel* level)
 		for (GameObject* object : _pObjects)
 		{
 			int section = sectionForPos(object->getPositionX());
-			_sectionObjects[section - 1 < 0 ? 0 : section - 1].push_back(object);
+			section = section - 1 < 0 ? 0 : section - 1;
+			while (section >= static_cast<int>(_sectionObjects.size()))
+				_sectionObjects.push_back({});
+			object->_section = section;
+			_sectionObjects[section].push_back(object);
 
 			if (_colorChannels.contains(object->_mainColorChannel) &&
 				_colorChannels[object->_mainColorChannel]._blending)
@@ -663,6 +517,8 @@ bool PlayLayer::init(GJGameLevel* level)
 	m_pHudLayer->addChild(m_pPercentage);
 
 	this->addChild(m_pHudLayer, 1000);
+	setupCoinHUD();
+	applyHudVisibility();
 
 	//bool levelValid = LevelTools::verifyLevelIntegrity(levelStr, this->getLevel()->_levelID);
 	constexpr bool levelValid = true;
@@ -739,16 +595,21 @@ void PlayLayer::update(float dt)
 
 	_colorChannels[1007]._color = getLightBG();
 
-	if (!m_freezePlayer && (!this->_player1->isDead() || !this->_player2->isDead()))
+	const bool gameplayActive = _player1 && !_player1->isDead() && (!_isDualMode || (_player2 && !_player2->isDead()));
+	if (!m_freezePlayer && gameplayActive)
 	{
+		_player1->storeShipRotationPos();
+		if (_isDualMode)
+			_player2->storeShipRotationPos();
+
 		step /= 4.0f;
 		lastY = _player1->getYVel();
 		for (int i = 0; i < 4; i++)
 		{
 			this->_player1->update(step);
 
-			_player1->setOuterBounds(Rect(_player1->getPosition(), Vec2(30, 30)));
-			_player1->setInnerBounds(Rect(_player1->getPosition() + Vec2(11.25f, 11.25f), Vec2(7.5, 7.5)));
+			_player1->setOuterBounds(Rect(_player1->getPosition() - Vec2(15.f, 15.f), Vec2(30.f, 30.f)));
+			_player1->setInnerBounds(Rect(_player1->getPosition() - Vec2(3.75f, 3.75f), Vec2(7.5f, 7.5f)));
 
 			this->checkCollisions(_player1, step);
 
@@ -760,8 +621,8 @@ void PlayLayer::update(float dt)
 
 			this->_player2->update(step);
 
-			_player2->setOuterBounds(Rect(_player1->getPosition(), Vec2(30, 30)));
-			_player2->setInnerBounds(Rect(_player1->getPosition() + Vec2(11.25f, 11.25f), Vec2(7.5, 7.5)));
+			_player2->setOuterBounds(Rect(_player2->getPosition() - Vec2(15.f, 15.f), Vec2(30.f, 30.f)));
+			_player2->setInnerBounds(Rect(_player2->getPosition() - Vec2(3.75f, 3.75f), Vec2(7.5f, 7.5f)));
 
 			this->checkCollisions(_player2, step);
 
@@ -769,6 +630,28 @@ void PlayLayer::update(float dt)
 				break;
 		}
 		step *= 4.0f;
+
+		auto* gm = GameManager::getInstance();
+		if (gm && gm->_autoCheckpoints && _isPracticeMode && _player1 && !_player1->isDead() &&
+			_player1->isOnGround() && _player1->isGroundedMode())
+		{
+			const float x = _player1->getPositionX();
+			if (x - _lastAutoCheckpointX >= 50.f)
+				markCheckpoint();
+		}
+	}
+
+	if (_effectManager)
+	{
+		if (_player1)
+		{
+			const Vec2 lastP = _player1->getLastP();
+			_effectManager->_xAccel = _player1->getPositionX() - lastP.x;
+			_effectManager->_yAccel = _player1->getPositionY() - lastP.y;
+			_player1->setLastP(_player1->getPosition());
+		}
+		_effectManager->prepareMoveActions(step / 60.f, false);
+		processMoveActionsStep(step);
 	}
 
 	m_pBar->setPercentage(_player1->getPositionX() / this->m_lastObjXPos * 100.f);
@@ -776,22 +659,46 @@ void PlayLayer::update(float dt)
 	m_pPercentage->setString(StringUtils::format("%.02f%%", val > 100 ? 100 : val < 0 ? 0 : val));
 
 	if (val >= 100 && !m_bEndAnimation)
+	{
+		recordAttemptProgress(true);
 		this->showCompleteText();
+	}
 
 	this->updateVisibility();
 	this->updateCamera(step);
-	if (_player1->_currentGamemode == PlayerGamemodeShip)
+	if (_player1->_currentGamemode == PlayerGamemodeShip || _player1->_currentGamemode == PlayerGamemodeUFO)
 		_player1->updateShipRotation(step);
-	if (_isDualMode && _player2->_currentGamemode == PlayerGamemodeShip)
+	if (_isDualMode && (_player2->_currentGamemode == PlayerGamemodeShip || _player2->_currentGamemode == PlayerGamemodeUFO))
 		_player2->updateShipRotation(step);
 
 	_colorChannels[1005]._color = _player1->getMainColor();
 	_colorChannels[1006]._color = _player1->getSecondaryColor();
+	_colorChannels[1007]._color = getLightBG();
+	if (m_pBG)
+		m_pBG->setColor(colorForChannel(1000));
+}
+
+void PlayLayer::applyHudVisibility()
+{
+	auto* gm = GameManager::getInstance();
+	const bool bar = !gm || gm->_showProgressBar;
+	const bool pct = !gm || gm->_showPercentage;
+	if (m_pBar)
+		m_pBar->setVisible(bar);
+	if (m_pPercentage)
+	{
+		m_pPercentage->setVisible(pct);
+		if (m_pBar)
+			m_pPercentage->setPosition({m_pBar->getPositionX() + (bar ? 110.f : 0.f), m_pBar->getPositionY() + 1});
+	}
+	showDn = gm && gm->_showHitboxes;
+	if (dn && !_freezeHitboxesOnDeath)
+		dn->setVisible(showDn);
 }
 
 ax::Color3B PlayLayer::getLightBG()
 {
-	return _colorChannels[1000]._color;
+	return colorForChannel(1000);
 }
 
 void PlayLayer::destroyPlayer(PlayerObject* player)
@@ -803,8 +710,230 @@ void PlayLayer::destroyPlayer(PlayerObject* player)
 	player->playDeathEffect();
 	player->stopRotation();
 	player->setVisible(false);
+	fireOnDeathTriggers();
+	recordAttemptProgress(false);
+
+	auto* gm = GameManager::getInstance();
+	if (gm && gm->_showHitboxesOnDeath)
+	{
+		_freezeHitboxesOnDeath = true;
+		showDn = true;
+		if (dn)
+			dn->setVisible(true);
+	}
 
 	scheduleOnce([&](float d) { resetLevel(); }, 1.f, "playlayer_restart");
+}
+
+int PlayLayer::currentPercent() const
+{
+	if (m_lastObjXPos <= 0.f || !_player1)
+		return 0;
+	const float val = _player1->getPositionX() / m_lastObjXPos * 100.f;
+	return std::clamp(static_cast<int>(val), 0, 100);
+}
+
+void PlayLayer::recordAttemptProgress(bool completed)
+{
+	auto* level = getLevel();
+	auto* gm = GameManager::getInstance();
+	if (!level || !gm)
+		return;
+
+	const int percent = completed ? 100 : currentPercent();
+	if (gm->recordLevelProgress(level->_levelID, percent, _isPracticeMode))
+	{
+		if (_isPracticeMode)
+			level->_practicePercent = static_cast<float>(percent);
+		else
+		{
+			level->_normalPercent = static_cast<float>(percent);
+			if (percent > 0)
+				showNewBest(percent);
+		}
+	}
+
+	if (completed)
+	{
+		int mask = 0;
+		for (size_t i = 0; i < _coinsCollected.size() && i < 8; i++)
+		{
+			if (_coinsCollected[i])
+				mask |= (1 << static_cast<int>(i));
+		}
+		if (mask)
+			gm->recordLevelCoins(level->_levelID, mask);
+	}
+}
+
+void PlayLayer::showNewBest(int percent)
+{
+	if (!m_pHudLayer)
+		return;
+
+	if (_newBestBanner)
+	{
+		_newBestBanner->stopAllActions();
+		_newBestBanner->removeFromParent();
+		_newBestBanner = nullptr;
+	}
+
+	const auto winSize = Director::getInstance()->getWinSize();
+	auto* banner = Node::create();
+	banner->setCascadeOpacityEnabled(true);
+	banner->setPosition({winSize.width / 2.f, winSize.height / 2.f + 36.f});
+	m_pHudLayer->addChild(banner, 80);
+	_newBestBanner = banner;
+
+	float percentY = -28.f;
+	if (auto* spr = Sprite::createWithSpriteFrameName("GJ_newBest_001.png"))
+	{
+		spr->setPosition({0.f, 0.f});
+		banner->addChild(spr);
+		percentY = -spr->getContentSize().height * 0.5f - 10.f;
+	}
+
+	auto* label = Label::createWithBMFont(
+		GameToolbox::getTextureString("goldFont.fnt"),
+		StringUtils::format("%i%%", percent));
+	label->setScale(0.58f);
+	label->setAnchorPoint({0.5f, 1.f});
+	label->setPosition({0.f, percentY});
+	banner->addChild(label, 1);
+
+	banner->setScale(0.01f);
+	banner->runAction(Sequence::create(
+		EaseElasticOut::create(ScaleTo::create(0.55f, 1.f), 0.6f),
+		DelayTime::create(1.25f),
+		FadeTo::create(0.35f, 0),
+		CallFunc::create([this, banner]() {
+			if (_newBestBanner == banner)
+				_newBestBanner = nullptr;
+			if (banner->getParent())
+				banner->removeFromParent();
+		}),
+		nullptr));
+}
+
+void PlayLayer::setupCoinHUD()
+{
+	for (auto* spr : _coinHUD)
+	{
+		if (spr)
+			spr->removeFromParent();
+	}
+	_coinHUD.clear();
+	if (!m_pHudLayer || _coinsCollected.empty())
+		return;
+
+	const auto winSize = Director::getInstance()->getWinSize();
+	int userCount = 0;
+	int secretCount = 0;
+	for (GameObject* obj : _pObjects)
+	{
+		if (!obj || !obj->isCoin())
+			continue;
+		if (obj->getID() == 1329)
+			userCount++;
+		else
+			secretCount++;
+	}
+
+	const char* frame = (userCount > 0 && secretCount == 0) ? "secretCoinUI2_001.png" : "secretCoinUI_001.png";
+	if (!SpriteFrameCache::getInstance()->getSpriteFrameByName(frame))
+		frame = (userCount > 0 && secretCount == 0) ? "GJ_coinsIcon2_001.png" : "GJ_coinsIcon_001.png";
+
+	const int count = static_cast<int>(_coinsCollected.size());
+	for (int i = 0; i < count; i++)
+	{
+		auto* icon = Sprite::createWithSpriteFrameName(frame);
+		if (!icon)
+			continue;
+		icon->setScale(0.45f);
+		icon->setPosition({24.f + i * 22.f, winSize.height - 28.f});
+		m_pHudLayer->addChild(icon, 20);
+		_coinHUD.push_back(icon);
+	}
+	refreshCoinHUD();
+}
+
+void PlayLayer::refreshCoinHUD()
+{
+	for (size_t i = 0; i < _coinHUD.size(); i++)
+	{
+		if (!_coinHUD[i])
+			continue;
+		const bool got = i < _coinsCollected.size() && _coinsCollected[i];
+		_coinHUD[i]->setColor(got ? Color3B::WHITE : Color3B(70, 70, 70));
+		_coinHUD[i]->setOpacity(got ? 255 : 160);
+	}
+}
+
+void PlayLayer::pickupCoin(GameObject* obj, PlayerObject* player)
+{
+	if (!obj || !player || obj->hasBeenActivatedByPlayer(player))
+		return;
+
+	obj->triggerActivated(player);
+	obj->stopAllActions();
+	obj->setVisible(false);
+	obj->setOpacity(0);
+
+	if (obj->_coinIndex >= 0 && obj->_coinIndex < static_cast<int>(_coinsCollected.size()))
+		_coinsCollected[obj->_coinIndex] = true;
+	refreshCoinHUD();
+
+	if (obj->_coinIndex >= 0 && obj->_coinIndex < static_cast<int>(_coinHUD.size()) && _coinHUD[obj->_coinIndex])
+	{
+		auto* icon = _coinHUD[obj->_coinIndex];
+		icon->stopAllActions();
+		icon->setScale(0.2f);
+		icon->runAction(EaseElasticOut::create(ScaleTo::create(0.45f, 0.45f), 0.6f));
+	}
+
+	const Vec2 pos = obj->getPosition();
+	if (auto* burst = ParticleSystemQuad::create("coinPickupEffect.plist"))
+	{
+		burst->setPosition(pos);
+		burst->setAutoRemoveOnFinish(true);
+		burst->setScale(1.6f);
+		addChild(burst, 120);
+	}
+	if (auto* burst2 = ParticleSystemQuad::create("coinEffect.plist"))
+	{
+		burst2->setPosition(pos);
+		burst2->setAutoRemoveOnFinish(true);
+		addChild(burst2, 120);
+	}
+
+	if (auto* flash = Sprite::createWithSpriteFrameName(
+			obj->getID() == 1329 ? "secretCoin_2_01_001.png" : "secretCoin_01_001.png"))
+	{
+		flash->setPosition(pos);
+		flash->setBlendFunc(GameToolbox::getBlending());
+		addChild(flash, 121);
+		flash->runAction(Sequence::create(
+			Spawn::createWithTwoActions(ScaleTo::create(0.28f, 1.8f), FadeOut::create(0.28f)),
+			RemoveSelf::create(true),
+			nullptr));
+	}
+
+	if (auto* wave = CircleWave::create(0.35f, {255, 220, 60, 255}, 8.f, 70.f, true, false))
+	{
+		wave->setPosition(pos);
+		addChild(wave, 119);
+	}
+
+	const char* sounds[] = {"gold01.ogg", "coin01.ogg", "secretCoin01.ogg", "endStart_02.ogg", "playSound_01.ogg"};
+	for (const char* sound : sounds)
+	{
+		if (FileUtils::getInstance()->isFileExist(sound) ||
+			FileUtils::getInstance()->isFileExist(GameToolbox::getTextureString(sound)))
+		{
+			AudioEngine::play2d(sound, false, 0.55f);
+			break;
+		}
+	}
 }
 
 void PlayLayer::updateCamera(float dt)
@@ -854,8 +983,10 @@ void PlayLayer::updateCamera(float dt)
 	{
 		this->m_pBG->setPositionX(this->m_pBG->getPositionX() -
 								  dt * player->getPlayerSpeed() * _bottomGround->getSpeed() * 0.1175f);
-		_bottomGround->update(dt * player->getPlayerSpeed());
-		_ceiling->update(dt * player->getPlayerSpeed());
+		if (_bottomGround)
+			_bottomGround->update(dt * player->getPlayerSpeed());
+		if (_ceiling)
+			_ceiling->update(dt * player->getPlayerSpeed());
 		cam.x = pPos.x - (winSize.width / 2.5f);
 	}
 	else if (player->m_bIsPlatformer)
@@ -879,10 +1010,21 @@ void PlayLayer::updateCamera(float dt)
 		m_obCamPos.y = cam.y;
 	}
 
-	Camera::getDefaultCamera()->setPosition(this->m_obCamPos + winSize / 2);
+	Vec2 camShake{0.f, 0.f};
+	if (_shakeTime > 0.f)
+	{
+		_shakeTime -= dt / 60.f;
+		const float mag = _shakeStrength > 0.f ? _shakeStrength : 4.f;
+		camShake.x = GameToolbox::randomFloat(static_cast<int>(-mag), static_cast<int>(mag));
+		camShake.y = GameToolbox::randomFloat(static_cast<int>(-mag), static_cast<int>(mag));
+	}
+
+	Camera::getDefaultCamera()->setPosition(this->m_obCamPos + winSize / 2 + camShake);
 
 	cameraFollow->setPosition(m_obCamPos);
-	_ceiling->setVisible(_player1->_currentGamemode != PlayerGamemodeCube);
+	const bool flying = _player1->isFlying() || _player1->_currentGamemode == PlayerGamemodeBall;
+	if (_ceiling)
+		_ceiling->setVisible(flying);
 	if (_player1->_currentGamemode == PlayerGamemodeCube)
 		_bottomGround->setPositionY(-cameraFollow->getPositionY() + 12);
 
@@ -967,6 +1109,7 @@ void PlayLayer::applyEnterEffect(GameObject* obj)
 		break;
 	}
 	obj->setEnterEffectID(0);
+	obj->refreshCollisionBounds();
 }
 
 void PlayLayer::updateVisibility()
@@ -975,8 +1118,18 @@ void PlayLayer::updateVisibility()
 
 	float unk = 70.0f;
 
-	int prevSection = floorf(this->m_obCamPos.x / 100) - 1.0f;
-	int nextSection = ceilf((this->m_obCamPos.x + winSize.width) / 100) + 1.0f;
+	int prevSection;
+	int nextSection;
+	if (_editorVisibilityAllSections)
+	{
+		prevSection = 0;
+		nextSection = static_cast<int>(_sectionObjects.size());
+	}
+	else
+	{
+		prevSection = floorf(this->m_obCamPos.x / 100) - 1.0f;
+		nextSection = ceilf((this->m_obCamPos.x + winSize.width) / 100) + 1.0f;
+	}
 
 	for (int i = prevSection; i < nextSection; i++)
 	{
@@ -992,81 +1145,7 @@ void PlayLayer::updateVisibility()
 						continue;
 
 					if (obj->getParent() == nullptr)
-					{
-						if (obj->_particle)
-						{
-							addChild(obj->_particle);
-							AX_SAFE_RELEASE(obj->_particle);
-						}
-						if (obj->_glowSprite)
-						{
-							_glowBatchNode->addChild(obj->_glowSprite);
-							AX_SAFE_RELEASE(obj->_glowSprite);
-						}
-
-						if (isObjectBlending(obj))
-						{
-							switch (obj->_zLayer)
-							{
-							case -3:
-								_blendingBatchNodeB4->addChild(obj);
-								break;
-							case -1:
-								_blendingBatchNodeB3->addChild(obj);
-								break;
-							case 1:
-								_blendingBatchNodeB2->addChild(obj);
-								break;
-							case 3:
-								_blendingBatchNodeB1->addChild(obj);
-								break;
-							default:
-							case 5:
-								_blendingBatchNodeT1->addChild(obj);
-								break;
-							case 7:
-								_blendingBatchNodeT2->addChild(obj);
-								break;
-							case 9:
-								_blendingBatchNodeT3->addChild(obj);
-								break;
-							}
-						}
-						else
-						{
-							if (obj->_texturePath == _mainBatchNodeTexture)
-							{
-								switch (obj->_zLayer)
-								{
-								case -3:
-									_mainBatchNodeB4->addChild(obj);
-									break;
-								case -1:
-									_mainBatchNodeB3->addChild(obj);
-									break;
-								case 1:
-									_mainBatchNodeB2->addChild(obj);
-									break;
-								case 3:
-									_mainBatchNodeB1->addChild(obj);
-									break;
-								default:
-								case 5:
-									_mainBatchNodeT1->addChild(obj);
-									break;
-								case 7:
-									_mainBatchNodeT2->addChild(obj);
-									break;
-								case 9:
-									_mainBatchNodeT3->addChild(obj);
-									break;
-								}
-							}
-							else if (obj->_texturePath == _main2BatchNodeTexture)
-								_main2BatchNode->addChild(obj);
-						}
-						AX_SAFE_RELEASE(obj);
-					}
+						attachGameObject(obj);
 
 					obj->setActive(true);
 					obj->update();
@@ -1092,88 +1171,15 @@ void PlayLayer::updateVisibility()
 		}
 	}
 
-	if (_prevSection - 1 >= 0 && _sectionObjects.size() != 0 && _prevSection <= _sectionObjects.size())
+	if (!_editorVisibilityAllSections && _prevSection - 1 >= 0 && _sectionObjects.size() != 0 && _prevSection <= _sectionObjects.size())
 	{
 		auto section = _sectionObjects[_prevSection - 1];
 		for (size_t j = 0; j < section.size(); j++)
 		{
+			if (!section[j])
+				continue;
 			section[j]->setActive(false);
-			if (section[j]->getParent() != nullptr)
-			{
-				AX_SAFE_RETAIN(section[j]);
-				if (section[j]->_particle)
-				{
-					AX_SAFE_RETAIN(section[j]->_particle);
-					removeChild(section[j]->_particle, true);
-				}
-				if (section[j]->_glowSprite)
-				{
-					AX_SAFE_RETAIN(section[j]->_glowSprite);
-					_glowBatchNode->removeChild(section[j]->_glowSprite, true);
-				}
-				//_mainBatchNode->removeChild(section[j], true);
-				if (isObjectBlending(section[j]))
-				{
-					switch (section[j]->_zLayer)
-					{
-					case -3:
-						_blendingBatchNodeB4->removeChild(section[j], true);
-						break;
-					case -1:
-						_blendingBatchNodeB3->removeChild(section[j], true);
-						break;
-					case 1:
-						_blendingBatchNodeB2->removeChild(section[j], true);
-						break;
-					case 3:
-						_blendingBatchNodeB1->removeChild(section[j], true);
-						break;
-					default:
-					case 5:
-						_blendingBatchNodeT1->removeChild(section[j], true);
-						break;
-					case 7:
-						_blendingBatchNodeT2->removeChild(section[j], true);
-						break;
-					case 9:
-						_blendingBatchNodeT3->removeChild(section[j], true);
-						break;
-					}
-				}
-				else
-				{
-					if (section[j]->_texturePath == _mainBatchNodeTexture)
-					{
-						switch (section[j]->_zLayer)
-						{
-						case -3:
-							_mainBatchNodeB4->removeChild(section[j], true);
-							break;
-						case -1:
-							_mainBatchNodeB3->removeChild(section[j], true);
-							break;
-						case 1:
-							_mainBatchNodeB2->removeChild(section[j], true);
-							break;
-						case 3:
-							_mainBatchNodeB1->removeChild(section[j], true);
-							break;
-						default:
-						case 5:
-							_mainBatchNodeT1->removeChild(section[j], true);
-							break;
-						case 7:
-							_mainBatchNodeT2->removeChild(section[j], true);
-							break;
-						case 9:
-							_mainBatchNodeT3->removeChild(section[j], true);
-							break;
-						}
-					}
-					else if (section[j]->_texturePath == _main2BatchNodeTexture)
-						_main2BatchNode->removeChild(section[j], true);
-				}
-			}
+			detachGameObject(section[j]);
 		}
 	}
 
@@ -1181,14 +1187,66 @@ void PlayLayer::updateVisibility()
 	this->_nextSection = nextSection;
 }
 
+void PlayLayer::applyLevelStartGamemode(PlayerObject* player, PlayerGamemode gameMode)
+{
+	player->setRotation(0.f);
+	player->setGamemode(gameMode);
+
+	switch (gameMode)
+	{
+	case PlayerGamemodeShip:
+	case PlayerGamemodeUFO:
+	case PlayerGamemodeWave:
+	case PlayerGamemodeSwing:
+		m_fCameraYCenter = 240.0f;
+		tweenBottomGround(-68);
+		tweenCeiling(388);
+		break;
+	case PlayerGamemodeBall:
+		m_fCameraYCenter = 210.0f;
+		tweenBottomGround(-38);
+		tweenCeiling(358);
+		break;
+	default:
+		break;
+	}
+}
+
+void PlayLayer::setDualMode(bool dual)
+{
+	_isDualMode = dual;
+
+	if (dual)
+	{
+		_player2->setPosition(_player1->getPosition());
+		_player2->setVisible(true);
+		_player2->setActive(true);
+		_player2->reset();
+		_player2->flipGravity(!_player1->isGravityFlipped());
+		_player2->setGamemode(_player1->_currentGamemode);
+		_player2->toggleMini(_player1->_mini);
+		_player2->m_dXVel = _player1->m_dXVel;
+		_player2->setPlayerSpeed(_player1->getPlayerSpeed());
+	}
+	else
+	{
+		_player2->setVisible(false);
+		_player2->setActive(false);
+		_player2->flipGravity(false);
+	}
+}
+
 void PlayLayer::changeGameMode(GameObject* obj, PlayerObject* player, PlayerGamemode gameMode)
 {
+	if (!obj || !player)
+		return;
 	obj->triggerActivated(player);
 	switch (gameMode)
 	{
 	case PlayerGamemodeShip:
 	case PlayerGamemodeUFO:
 	case PlayerGamemodeWave:
+	case PlayerGamemodeSwing:
 		if (obj->getPositionY() < 270)
 			m_fCameraYCenter = 240.0f;
 		else
@@ -1205,6 +1263,14 @@ void PlayLayer::changeGameMode(GameObject* obj, PlayerObject* player, PlayerGame
 
 		tweenBottomGround(-38);
 		tweenCeiling(358);
+		break;
+	case PlayerGamemodeCube:
+	case PlayerGamemodeRobot:
+	case PlayerGamemodeSpider:
+		if (_ceiling)
+			_ceiling->setVisible(false);
+		if (_bottomGround && cameraFollow)
+			_bottomGround->setPositionY(-cameraFollow->getPositionY() + 12);
 		break;
 	default:
 		break;
@@ -1236,8 +1302,11 @@ void PlayLayer::moveCameraToPos(Vec2 pos)
 
 void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 {
+	player->beginSlopePass();
+
 	auto playerOuterBounds = player->_mini ? player->getOuterBounds(0.6f, 0.6f) : player->getOuterBounds();
-	if (player->getPositionY() < (player->_mini ? 99.f : 105.0f) && player->_currentGamemode == PlayerGamemodeCube)
+	player->setTouchedRing(nullptr);
+	if (player->getPositionY() < (player->_mini ? 99.f : 105.0f) && player->isGroundedMode())
 	{
 		if (player->isGravityFlipped())
 		{
@@ -1256,23 +1325,22 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 		return;
 	}
 
-	if (player->_currentGamemode != PlayerGamemodeCube)
+	if (player->isFlying() || player->_currentGamemode == PlayerGamemodeBall)
 	{
-		if (player->getPositionY() <
-			_bottomGround->getPositionY() + cameraFollow->getPositionY() + (player->_mini ? 87.f : 93.0f))
+		const float worldFloor = flyingFloorY(player);
+		const float worldCeil = flyingCeilY(player);
+		if (player->getPositionY() < worldFloor)
 		{
-			player->setPositionY(_bottomGround->getPositionY() + cameraFollow->getPositionY() +
-								 (player->_mini ? 87.f : 93.0f));
+			player->setPositionY(worldFloor);
 
 			if (!player->isGravityFlipped())
 				player->hitGround(false);
 
 			player->setYVel(0.f);
 		}
-		if (player->getPositionY() >
-			_ceiling->getPositionY() - (player->_mini ? 234.f : 240.f) + m_fCameraYCenter - 12.f)
+		if (player->getPositionY() > worldCeil)
 		{
-			player->setPositionY(_ceiling->getPositionY() - (player->_mini ? 234.f : 240.f) + m_fCameraYCenter - 12.f);
+			player->setPositionY(worldCeil);
 
 			if (player->isGravityFlipped())
 				player->hitGround(true);
@@ -1281,7 +1349,17 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 		}
 	}
 
-	dn->setVisible(showDn);
+	// Ground/ceiling snap moves the player; collision must use the new box
+	// or the ship visually sits in spikes while the hitbox is still below them.
+	player->setOuterBounds(Rect(player->getPosition() - Vec2(15.f, 15.f), Vec2(30.f, 30.f)));
+	player->setInnerBounds(Rect(player->getPosition() - Vec2(3.75f, 3.75f), Vec2(7.5f, 7.5f)));
+	playerOuterBounds = player->_mini ? player->getOuterBounds(0.6f, 0.6f) : player->getOuterBounds();
+
+	auto* gm = GameManager::getInstance();
+	const bool drawBoxes = (gm && gm->_showHitboxes) || _freezeHitboxesOnDeath;
+	showDn = drawBoxes;
+
+	dn->setVisible(drawBoxes);
 
 	if (showDn)
 	{
@@ -1294,7 +1372,7 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 
 	std::deque<GameObject*> m_pHazards;
 
-	for (int i = current_section - 2; i < current_section + 1; i++)
+	for (int i = current_section - 2; i <= current_section + 1; i++)
 	{
 		if (i < _sectionObjects.size() && i >= 0)
 		{
@@ -1307,12 +1385,114 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 				if (!obj)
 					continue;
 
-				auto objBounds = obj->getOuterBounds();
+				if (obj->wantsCollisionBounds())
+					obj->refreshCollisionBounds();
 
-				if ((objBounds.size.width <= 0 || objBounds.size.height <= 0))
+				if (obj->isCoin())
+				{
+					if (obj->hasBeenActivatedByPlayer(player))
+						continue;
+					Rect coinBounds = obj->getOuterBounds();
+					if (coinBounds.size.width <= 0.f || coinBounds.size.height <= 0.f)
+						coinBounds = Rect(obj->getPosition() - Vec2(22.f, 22.f), Vec2(44.f, 44.f));
+					else
+					{
+						coinBounds.origin -= Vec2(6.f, 6.f);
+						coinBounds.size += Vec2(12.f, 12.f);
+					}
+					if (playerOuterBounds.intersectsRect(coinBounds))
+						pickupCoin(obj, player);
+					continue;
+				}
+
+				const GameObjectType earlyType = obj->getGameObjectType();
+				if (earlyType == kGameObjectTypeCubePortal || earlyType == kGameObjectTypeShipPortal ||
+					earlyType == kGameObjectTypeBallPortal || earlyType == kGameObjectTypeUfoPortal ||
+					earlyType == kGameObjectTypeWavePortal || earlyType == kGameObjectTypeRobotPortal ||
+					earlyType == kGameObjectTypeSpiderPortal || earlyType == kGameObjectTypeSwingPortal)
+				{
+					if (obj->hasBeenActivatedByPlayer(player))
+						continue;
+					Rect portalBounds = obj->getOuterBounds();
+					if (portalBounds.size.width <= 0.f || portalBounds.size.height <= 0.f)
+						portalBounds = Rect(obj->getPosition() - Vec2(20.f, 50.f), Vec2(40.f, 100.f));
+					// A ship on the floor (y=105) misses the official 86px portal by ~2px.
+					portalBounds.origin -= Vec2(8.f, 16.f);
+					portalBounds.size += Vec2(16.f, 32.f);
+					if (playerOuterBounds.intersectsRect(portalBounds))
+					{
+						player->setPortalP(obj->getPosition());
+						player->setPortalObject(obj);
+						switch (earlyType)
+						{
+						case kGameObjectTypeShipPortal:
+							changeGameMode(obj, player, PlayerGamemodeShip);
+							break;
+						case kGameObjectTypeBallPortal:
+							changeGameMode(obj, player, PlayerGamemodeBall);
+							break;
+						case kGameObjectTypeUfoPortal:
+							changeGameMode(obj, player, PlayerGamemodeUFO);
+							break;
+						case kGameObjectTypeCubePortal:
+							changeGameMode(obj, player, PlayerGamemodeCube);
+							break;
+						case kGameObjectTypeWavePortal:
+							changeGameMode(obj, player, PlayerGamemodeWave);
+							break;
+						case kGameObjectTypeRobotPortal:
+							changeGameMode(obj, player, PlayerGamemodeRobot);
+							break;
+						case kGameObjectTypeSpiderPortal:
+							changeGameMode(obj, player, PlayerGamemodeSpider);
+							break;
+						case kGameObjectTypeSwingPortal:
+							changeGameMode(obj, player, PlayerGamemodeSwing);
+							break;
+						default:
+							break;
+						}
+					}
+					continue;
+				}
+
+				auto objBounds = obj->getOuterBounds();
+				const GameObjectType objType = obj->getGameObjectType();
+
+				if (objType == kGameObjectTypeDecoration || objType == kGameObjectTypeSpecial ||
+					!obj->wantsCollisionBounds())
 					continue;
 
-				if (obj->getGameObjectType() == kGameObjectTypeHazard)
+				if (obj->_isTrigger)
+				{
+					if (objBounds.size.width <= 0.f || objBounds.size.height <= 0.f)
+						continue;
+					if (playerOuterBounds.intersectsRect(objBounds))
+					{
+						auto* touchTrigger = dynamic_cast<EffectGameObject*>(obj);
+						if (touchTrigger && touchTrigger->_touchTriggered)
+							touchTrigger->triggerActivated(dt);
+					}
+					continue;
+				}
+
+				if (objType == kGameObjectTypeHazard)
+				{
+					if (objBounds.size.width <= 0.f || objBounds.size.height <= 0.f)
+					{
+						const Hitbox hb = GameObject::resolveHitbox(obj->getID());
+						if (hb.w > 0.f && hb.h > 0.f)
+							objBounds = Rect(obj->getPosition() + Vec2(hb.x, hb.y), Vec2(hb.w, hb.h));
+						else
+							objBounds = Rect(obj->getPosition() + Vec2(-3.f, -6.f), Vec2(6.f, 12.f));
+						obj->setOuterBounds(objBounds);
+					}
+				}
+
+				if ((objBounds.size.width <= 0 || objBounds.size.height <= 0) && obj->_radius <= 0)
+					continue;
+
+				if (objType == kGameObjectTypeHazard)
 				{
 					m_pHazards.push_back(obj);
 					if (showDn)
@@ -1320,28 +1500,31 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 						if (obj->_radius <= 0)
 							renderRect(objBounds, ax::Color4B::RED);
 						else
-							dn->drawCircle(obj->getPosition() + Vec2(15, 15), obj->_radius, 0, 20, 0, ax::Color4B::RED);
+							dn->drawCircle(obj->getPosition(), obj->_radius, 0, 20, 0, ax::Color4B::RED);
 					}
 				}
-				else if (obj->isActive())
+				else if (objType == kGameObjectTypeSolid || objType == kGameObjectTypeSlope ||
+						 objType == kGameObjectTypeCollisionObject)
 				{
-					if (obj->_isTrigger)
-					{
-						auto trigger = dynamic_cast<EffectGameObject*>(obj);
-						if (!trigger->_wasTriggerActivated && trigger->getPositionX() <= player->getPositionX())
-						{
-							trigger->triggerActivated(dt);
-						}
-					}
 					if (showDn)
-					{
 						renderRect(objBounds, ax::Color4B::BLUE);
-					}
 
-					if (playerOuterBounds.intersectsRect(objBounds) && !obj->hasBeenActivatedByPlayer(player))
+					if (playerOuterBounds.intersectsRect(objBounds))
 					{
-						switch (obj->getGameObjectType())
-						{
+						if (objType == kGameObjectTypeSlope)
+							player->collidedWithSlope(dt, obj);
+						else
+							player->collidedWithObject(dt, obj);
+					}
+				}
+				else if (playerOuterBounds.intersectsRect(objBounds))
+				{
+					if (objType != kGameObjectTypeSolid && objType != kGameObjectTypeSlope &&
+						obj->hasBeenActivatedByPlayer(player))
+						continue;
+
+					switch (objType)
+					{
 						case kGameObjectTypeInverseGravityPortal:
 							// if (!player->isGravityFlipped())
 							//	 this->playGravityEffect(true);
@@ -1391,6 +1574,51 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							this->changeGameMode(obj, player, PlayerGamemodeCube);
 							break;
 
+						case kGameObjectTypeWavePortal:
+							player->setPortalP(obj->getPosition());
+							player->setPortalObject(obj);
+							this->changeGameMode(obj, player, PlayerGamemodeWave);
+							break;
+
+						case kGameObjectTypeRobotPortal:
+							player->setPortalP(obj->getPosition());
+							player->setPortalObject(obj);
+							this->changeGameMode(obj, player, PlayerGamemodeRobot);
+							break;
+
+						case kGameObjectTypeSpiderPortal:
+							player->setPortalP(obj->getPosition());
+							player->setPortalObject(obj);
+							this->changeGameMode(obj, player, PlayerGamemodeSpider);
+							break;
+
+						case kGameObjectTypeSwingPortal:
+							player->setPortalP(obj->getPosition());
+							player->setPortalObject(obj);
+							this->changeGameMode(obj, player, PlayerGamemodeSwing);
+							break;
+
+						case kGameObjectTypeTeleportPortal:
+							obj->triggerActivated(player);
+							player->setPortalP(obj->getPosition());
+							player->setPortalObject(obj);
+							teleportPlayer(player, obj);
+							break;
+
+						case kGameObjectTypeDualPortal:
+							obj->triggerActivated(player);
+							player->setPortalP(obj->getPosition());
+							player->setPortalObject(obj);
+							setDualMode(true);
+							break;
+
+						case kGameObjectTypeSoloPortal:
+							obj->triggerActivated(player);
+							player->setPortalP(obj->getPosition());
+							player->setPortalObject(obj);
+							setDualMode(false);
+							break;
+
 						case kGameObjectTypeYellowJumpPad:
 							player->setPortalP(obj->getPosition());
 							player->setPortalObject(obj);
@@ -1429,21 +1657,36 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							player->_touchedPadObject = obj;
 							break;
 
+						case kGameObjectTypeSpiderPad:
+							player->setPortalP(obj->getPosition());
+							player->setPortalObject(obj);
+							obj->triggerActivated(player);
+							player->_touchedPadObject = obj;
+							spiderTeleport(player);
+							break;
+
 						case kGameObjectTypeYellowJumpRing:
 						case kGameObjectTypeDashRing:
+						case kGameObjectTypeGravityDashRing:
 						case kGameObjectTypeGravityRing:
 						case kGameObjectTypeRedJumpRing:
 						case kGameObjectTypePinkJumpRing:
 						case kGameObjectTypeDropRing:
 						case kGameObjectTypeGreenRing:
+						case kGameObjectTypeSpiderRing:
+						case kGameObjectTypeCustomRing:
 							player->setPortalP(obj->getPosition());
 							player->setPortalObject(obj);
 
 							player->setTouchedRing(obj);
 
 							player->ringJump(obj);
+							if (obj->getGameObjectType() == kGameObjectTypeCustomRing &&
+								obj->hasBeenActivatedByPlayer(player))
+								teleportPlayer(player, obj);
 							break;
 						case kGameObjectTypeModifier:
+							obj->triggerActivated(player);
 							switch (obj->getID())
 							{
 							case 201:
@@ -1464,8 +1707,14 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							}
 							break;
 						case kGameObjectTypeSpecial:
+							break;
 						case kGameObjectTypeNormalMirrorPortal:
+							obj->triggerActivated(player);
+							setMirror(false);
+							break;
 						case kGameObjectTypeInverseMirrorPortal:
+							obj->triggerActivated(player);
+							setMirror(true);
 							break;
 						case kGameObjectTypeMiniSizePortal:
 							obj->triggerActivated(player);
@@ -1479,32 +1728,77 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							player->setPortalObject(obj);
 							player->toggleMini(false);
 							break;
+						case kGameObjectTypeSlope:
+							player->collidedWithSlope(dt, obj);
+							break;
+						case kGameObjectTypeSecretCoin:
+						case kGameObjectTypeUserCoin:
+						case kGameObjectTypeCollectible:
+							pickupCoin(obj, player);
+							break;
 						default:
-							player->collidedWithObject(dt, obj);
+							if (obj->isCoin())
+								pickupCoin(obj, player);
 							break;
 						}
 					}
 				}
 			}
 		}
-	}
 	for (unsigned int i = 0; i < m_pHazards.size(); ++i)
 	{
 		GameObject* hazard = m_pHazards[i];
 		if (hazard->_radius > 0)
 		{
-			if (playerOuterBounds.intersectsCircle(hazard->getPosition() + Vec2(15, 15), hazard->_radius))
+			if (playerOuterBounds.intersectsCircle(hazard->getPosition(), hazard->_radius))
 				destroyPlayer(player);
 		}
-		else if (playerOuterBounds.intersectsRect(hazard->getOuterBounds()))
+		else
 		{
-			destroyPlayer(player);
+			Rect hazardBounds = hazard->getOuterBounds();
+			if (hazardBounds.size.width <= 0.f || hazardBounds.size.height <= 0.f)
+				hazardBounds = Rect(hazard->getPosition() - Vec2(9.f, 10.f), Vec2(18.f, 20.f));
+			if (playerOuterBounds.intersectsRect(hazardBounds))
+				destroyPlayer(player);
 		}
 	}
 	m_pHazards.clear();
 
+	player->endSlopePass(dt);
+
+	if (player->_spiderTeleportQueued)
+	{
+		player->_spiderTeleportQueued = false;
+		spiderTeleport(player);
+	}
+
 	if (player->_currentGamemode == PlayerGamemodeShip)
 		player->_queuedHold = false;
+
+	if (player == _player1)
+	{
+		const float fromX = _lastTriggerScanX;
+		const float toX = player->getPositionX();
+		if (fromX != toX)
+		{
+			for (GameObject* obj : _pObjects)
+			{
+				if (!obj || !obj->_isTrigger)
+					continue;
+				auto* trigger = dynamic_cast<EffectGameObject*>(obj);
+				if (!trigger || trigger->_spawnTriggered || trigger->_touchTriggered)
+					continue;
+				const int tid = trigger->getID();
+				if (tid == 1812 || tid == 1815)
+					continue;
+				const float tx = obj->getPositionX();
+				const bool crossed = (toX >= fromX) ? (tx > fromX && tx <= toX) : (tx < fromX && tx >= toX);
+				if (crossed)
+					trigger->triggerActivated(dt);
+			}
+		}
+		_lastTriggerScanX = toX;
+	}
 }
 
 void PlayLayer::onDrawImGui()
@@ -1563,7 +1857,8 @@ void PlayLayer::onDrawImGui()
 
 	ImGui::Text("yVel %.3f", _player1->getYVel());
 
-	ImGui::Checkbox("Show Hitboxes", &showDn);
+	if (auto* gm = GameManager::getInstance())
+		ImGui::Checkbox("Show Hitboxes", &gm->_showHitboxes);
 	ImGui::Checkbox("Gain the power of invincibility", &noclip);
 
 	if (ImGui::InputFloat("Speed", &gameSpeed))
@@ -1588,9 +1883,16 @@ void PlayLayer::onDrawImGui()
 
 void PlayLayer::resetLevel()
 {
+	unschedule("playlayer_restart");
 	_attempts++;
+	_freezeHitboxesOnDeath = false;
+	if (auto* gm = GameManager::getInstance())
+		showDn = gm->_showHitboxes;
+	if (dn)
+		dn->setVisible(showDn);
 	auto dir = Director::getInstance();
 	_player1->setPosition({2, 105});
+	_lastTriggerScanX = -30.f;
 	_player1->setRotation(0);
 	_player1->setVisible(true);
 	_player2->setPosition({2, 105});
@@ -1608,12 +1910,22 @@ void PlayLayer::resetLevel()
 	m_bEndAnimation = false;
 	_isDualMode = false;
 	_secondsSinceStart = 0;
+	_itemCounts.clear();
+	_shakeTime = 0.f;
+	_shakeStrength = 0.f;
+	setMirror(false);
+	if (_effectManager)
+	{
+		_effectManager->_groupActions.clear();
+		_effectManager->_activeMoveActions.clear();
+		_effectManager->_completedMoveActions.clear();
+	}
 
-	for (size_t i = 0; i < _groups.size(); i++)
-		_groups[i]._alpha = 1.f;
-
-	for (size_t i = 0; i < _groups.size(); i++)
-		_groups[i]._alpha = 1.f;
+	for (auto& [id, group] : _groups)
+	{
+		group._alpha = 1.f;
+		group.groupState = GroupProperties::GroupState::NOT_CHANGING;
+	}
 
 	for (auto obj : this->_pObjects)
 	{
@@ -1621,101 +1933,58 @@ void PlayLayer::resetLevel()
 			continue;
 		if (obj->_isTrigger)
 		{
-			auto trigger = dynamic_cast<EffectGameObject*>(obj);
-			trigger->_wasTriggerActivated = false;
+			if (auto* trigger = dynamic_cast<EffectGameObject*>(obj))
+				trigger->_wasTriggerActivated = false;
 		}
 		obj->_hasBeenActivatedP1 = false;
 		obj->_hasBeenActivatedP2 = false;
 		obj->_effectOpacityMultipler = 1.f;
-		obj->setActive(false);
-		if (obj->getParent() != nullptr)
+		obj->_startPosOffset = {0.f, 0.f};
+		obj->_unkbool = false;
+		obj->_toggledOn = true;
+		obj->setPosition(obj->getStartPosition());
+		if (obj->_isTrigger)
 		{
-			if (obj->_particle)
-			{
-				AX_SAFE_RETAIN(obj->_particle);
-				removeChild(obj->_particle, true);
-			}
-			if (obj->_glowSprite)
-			{
-				AX_SAFE_RETAIN(obj->_glowSprite);
-				_glowBatchNode->removeChild(obj->_glowSprite, true);
-			}
-			AX_SAFE_RETAIN(obj);
-			//_mainBatchNode->removeChild(obj, true);
-			if (isObjectBlending(obj))
-			{
-				switch (obj->_zLayer)
-				{
-				case -3:
-					_blendingBatchNodeB4->removeChild(obj, true);
-					break;
-				case -1:
-					_blendingBatchNodeB3->removeChild(obj, true);
-					break;
-				case 1:
-					_blendingBatchNodeB2->removeChild(obj, true);
-					break;
-				case 3:
-					_blendingBatchNodeB1->removeChild(obj, true);
-					break;
-				default:
-				case 5:
-					_blendingBatchNodeT1->removeChild(obj, true);
-					break;
-				case 7:
-					_blendingBatchNodeT2->removeChild(obj, true);
-					break;
-				case 9:
-					_blendingBatchNodeT3->removeChild(obj, true);
-					break;
-				}
-			}
-			else
-			{
-				if (obj->_texturePath == _mainBatchNodeTexture)
-				{
-					switch (obj->_zLayer)
-					{
-					case -3:
-						_mainBatchNodeB4->removeChild(obj, true);
-						break;
-					case -1:
-						_mainBatchNodeB3->removeChild(obj, true);
-						break;
-					case 1:
-						_mainBatchNodeB2->removeChild(obj, true);
-						break;
-					case 3:
-						_mainBatchNodeB1->removeChild(obj, true);
-						break;
-					default:
-					case 5:
-						_mainBatchNodeT1->removeChild(obj, true);
-						break;
-					case 7:
-						_mainBatchNodeT2->removeChild(obj, true);
-						break;
-					case 9:
-						_mainBatchNodeT3->removeChild(obj, true);
-						break;
-					}
-				}
-				else if (obj->_texturePath == _main2BatchNodeTexture)
-					_main2BatchNode->removeChild(obj, true);
-			}
+			obj->setVisible(false);
+			obj->setOpacity(0);
 		}
+		else
+		{
+			obj->setVisible(true);
+			obj->setOpacity(obj->getID() == 1586 ? 0 : 255);
+		}
+		if (obj->_particle)
+		{
+			obj->_particle->setPosition(obj->getStartPosition());
+			if (obj->_animateOnTrigger)
+				obj->_particle->stopSystem();
+			else
+				obj->_particle->resetSystem();
+		}
+		obj->setActive(false);
+		detachGameObject(obj);
+	}
+	std::fill(_coinsCollected.begin(), _coinsCollected.end(), false);
+	refreshCoinHUD();
+
+	if (_newBestBanner)
+	{
+		_newBestBanner->stopAllActions();
+		_newBestBanner->removeFromParent();
+		_newBestBanner = nullptr;
 	}
 
-	dir->getActionManager()->removeAllActions();
+	_player1->stopAllActions();
+	_player2->stopAllActions();
 
 	_colorChannels = _originalColors;
 
 	_prevSection = -1;
 	_nextSection = -1;
 
-	if (this->_colorChannels.contains(1000))
-		this->m_pBG->setColor(this->_colorChannels.at(1000)._color);
-	else {
+	if (this->_colorChannels.contains(1000) && this->m_pBG)
+		this->m_pBG->setColor(colorForChannel(1000));
+	else if (this->m_pBG) {
 		this->m_pBG->setColor(ax::Color3B::GRAY);
 		this->_colorChannels[1000]._color = ax::Color3B::GRAY;
 	}
@@ -1723,21 +1992,31 @@ void PlayLayer::resetLevel()
 	this->_ceiling->update(0);
 
 	AudioEngine::stopAll();
-	AudioEngine::setCurrentTime(AudioEngine::play2d(LevelTools::getAudioFilename(getLevel()->_musicID), false, 0.1f),
-								_levelSettings.songOffset);
+	{
+		float musicVol = 0.1f;
+		if (auto* gm = GameManager::getInstance())
+			musicVol *= gm->getMusicVolume();
+		_musicAudioId = AudioEngine::play2d(LevelTools::getAudioFilename(getLevel()->_musicID), false, musicVol);
+		AudioEngine::setCurrentTime(_musicAudioId, _levelSettings.songOffset);
+	}
 
-	changeGameMode(_player1, _player1, _levelSettings.gamemode);
-	changeGameMode(_player1, _player2, _levelSettings.gamemode);
+	applyLevelStartGamemode(_player1, _levelSettings.gamemode);
+	_player2->setRotation(0.f);
+	_player2->setGamemode(_levelSettings.gamemode);
 	_player1->toggleMini(_levelSettings.mini);
 	_player2->toggleMini(_levelSettings.mini);
 	changePlayerSpeed(_levelSettings.speed);
+	m_platformerMode = _levelSettings.platformer;
+	_player1->m_bIsPlatformer = m_platformerMode;
+	_player2->m_bIsPlatformer = m_platformerMode;
+	_player1->direction = m_platformerMode ? 0.f : 1.f;
+	_player2->direction = m_platformerMode ? 0.f : 1.f;
 	m_obCamPos.y = m_fCameraYCenter;
-	_isDualMode = _levelSettings.dual;
-	if (_isDualMode)
-	{
-		// toggle dual
-	}
+	setDualMode(_levelSettings.dual);
 	scheduleUpdate();
+
+	if (_isPracticeMode && !_checkpoints.empty())
+		applyCheckpoint(_checkpoints.back());
 }
 
 void PlayLayer::renderRect(ax::Rect rect, ax::Color4B col)
@@ -1775,8 +2054,196 @@ void PlayLayer::onExit()
 	Layer::onExit();
 }
 
+void PlayLayer::pauseGame()
+{
+	if (_isPaused || m_bEndAnimation)
+		return;
+	if (_player1 && _player1->isDead())
+		return;
+
+	_isPaused = true;
+	m_freezePlayer = true;
+
+	if (_player1 && _player1->m_bIsHolding)
+		_player1->releaseButton();
+	if (_isDualMode && _player2 && _player2->m_bIsHolding)
+		_player2->releaseButton();
+
+	if (m_pHudLayer && m_pHudLayer->_listener)
+		m_pHudLayer->_listener->setEnabled(false);
+
+	if (_pauseLayer)
+	{
+		_pauseLayer->removeFromParent();
+		_pauseLayer = nullptr;
+	}
+
+	_pauseLayer = PauseLayer::create(this);
+	if (_pauseLayer && m_pHudLayer)
+	{
+		m_pHudLayer->addChild(_pauseLayer, 500);
+		return;
+	}
+
+	_isPaused = false;
+	m_freezePlayer = false;
+	if (m_pHudLayer && m_pHudLayer->_listener)
+		m_pHudLayer->_listener->setEnabled(true);
+	_pauseLayer = nullptr;
+}
+
+void PlayLayer::resumeGame()
+{
+	if (!_isPaused)
+		return;
+
+	_isPaused = false;
+	m_freezePlayer = false;
+
+	if (m_pHudLayer && m_pHudLayer->_listener)
+		m_pHudLayer->_listener->setEnabled(true);
+
+	if (_pauseLayer)
+	{
+		_pauseLayer->removeFromParent();
+		_pauseLayer = nullptr;
+	}
+
+	AudioEngine::resumeAll();
+}
+
+void PlayLayer::togglePracticeMode()
+{
+	_isPracticeMode = !_isPracticeMode;
+	if (!_isPracticeMode)
+		clearCheckpoints();
+	else if (_player1)
+		_lastAutoCheckpointX = _player1->getPositionX();
+	if (m_pHudLayer)
+		m_pHudLayer->setPracticeHintVisible(_isPracticeMode);
+}
+
+void PlayLayer::markCheckpoint()
+{
+	if (!_isPracticeMode || !_player1 || _player1->isDead() || _isPaused)
+		return;
+
+	PracticeCheckpoint cp;
+	cp.pos1 = _player1->getPosition();
+	cp.rot1 = _player1->getRotation();
+	cp.yVel1 = _player1->getYVel();
+	cp.xVel1 = _player1->m_dXVel;
+	cp.speed1 = _player1->getPlayerSpeed();
+	cp.gravity1 = _player1->isGravityFlipped();
+	cp.mini1 = _player1->_mini;
+	cp.gamemode1 = _player1->_currentGamemode;
+	cp.dual = _isDualMode;
+	if (_player2 && _isDualMode)
+	{
+		cp.pos2 = _player2->getPosition();
+		cp.rot2 = _player2->getRotation();
+		cp.yVel2 = _player2->getYVel();
+		cp.xVel2 = _player2->m_dXVel;
+		cp.speed2 = _player2->getPlayerSpeed();
+		cp.gravity2 = _player2->isGravityFlipped();
+		cp.mini2 = _player2->_mini;
+		cp.gamemode2 = _player2->_currentGamemode;
+	}
+	cp.camPos = m_obCamPos;
+	if (_musicAudioId >= 0)
+		cp.songTime = AudioEngine::getCurrentTime(_musicAudioId);
+
+	if (SpriteFrameCache::getInstance()->getSpriteFrameByName("checkpoint_01_001.png"))
+	{
+		auto* spr = Sprite::createWithSpriteFrameName("checkpoint_01_001.png");
+		if (spr)
+		{
+			spr->setStretchEnabled(false);
+			spr->setPosition(cp.pos1);
+			addChild(spr, 90);
+			cp.sprite = spr;
+		}
+	}
+
+	_checkpoints.push_back(cp);
+	_lastAutoCheckpointX = cp.pos1.x;
+}
+
+void PlayLayer::removeCheckpoint()
+{
+	if (!_isPracticeMode || _checkpoints.empty() || _isPaused)
+		return;
+
+	auto& cp = _checkpoints.back();
+	if (cp.sprite)
+		cp.sprite->removeFromParent();
+	_checkpoints.pop_back();
+	_lastAutoCheckpointX = _checkpoints.empty() ? -9999.f : _checkpoints.back().pos1.x;
+}
+
+void PlayLayer::clearCheckpoints()
+{
+	for (auto& cp : _checkpoints)
+	{
+		if (cp.sprite)
+			cp.sprite->removeFromParent();
+	}
+	_checkpoints.clear();
+	_lastAutoCheckpointX = -9999.f;
+}
+
+void PlayLayer::applyCheckpoint(const PracticeCheckpoint& checkpoint)
+{
+	if (!_player1)
+		return;
+
+	applyLevelStartGamemode(_player1, checkpoint.gamemode1);
+	_player1->toggleMini(checkpoint.mini1);
+	_player1->flipGravity(checkpoint.gravity1);
+	_player1->setPosition(checkpoint.pos1);
+	_player1->setRotation(checkpoint.rot1);
+	_player1->m_dXVel = checkpoint.xVel1;
+	_player1->setPlayerSpeed(checkpoint.speed1);
+	_player1->setYVel(checkpoint.yVel1);
+	_player1->setIsDead(false);
+	_player1->setVisible(true);
+
+	setDualMode(checkpoint.dual);
+	if (checkpoint.dual && _player2)
+	{
+		_player2->setGamemode(checkpoint.gamemode2);
+		_player2->toggleMini(checkpoint.mini2);
+		_player2->flipGravity(checkpoint.gravity2);
+		_player2->setPosition(checkpoint.pos2);
+		_player2->setRotation(checkpoint.rot2);
+		_player2->m_dXVel = checkpoint.xVel2;
+		_player2->setPlayerSpeed(checkpoint.speed2);
+		_player2->setYVel(checkpoint.yVel2);
+		_player2->setIsDead(false);
+		_player2->setVisible(true);
+		_player2->setActive(true);
+	}
+
+	m_obCamPos = checkpoint.camPos;
+	if (m_pBG)
+		m_pBG->setPositionX(Director::getInstance()->getWinSize().width / 2.f);
+	if (_musicAudioId >= 0)
+		AudioEngine::setCurrentTime(_musicAudioId, checkpoint.songTime);
+}
+
+void PlayLayer::applyMusicVolume()
+{
+	if (_musicAudioId < 0)
+		return;
+	float musicVol = 0.1f;
+	if (auto* gm = GameManager::getInstance())
+		musicVol *= gm->getMusicVolume();
+	AudioEngine::setVolume(_musicAudioId, musicVol);
+}
+
 void PlayLayer::exit()
 {
+	clearCheckpoints();
 
 	_player1->deactivateStreak();
 	_player2->deactivateStreak();
@@ -1819,24 +2286,47 @@ void PlayLayer::exit()
 	AudioEngine::play2d("quitSound_01.ogg", false, 0.1f);
 	AudioEngine::play2d("menuLoop.mp3", true, 0.2f);
 
-	auto id = getLevel()->_levelID;
-	if (id <= 0 || id > 22)
-		return GameToolbox::popSceneWithTransition(0.5f);
+	int id = 1;
+	if (auto* level = getLevel())
+		id = level->_levelID;
+	if (id < 1 || id > 22)
+	{
+		GameToolbox::popSceneWithTransition(0.5f);
+		return;
+	}
 
-	// GameToolbox::popSceneWithTransition(0.5f);
-
-
-	Director::getInstance()->pushScene(
-		TransitionFade::create(0.5f, LevelSelectLayer::scene(getLevel()->_levelID - 1)));
+	Director::getInstance()->replaceScene(
+		TransitionFade::create(0.5f, LevelSelectLayer::scene(id - 1)));
 }
 
 void PlayLayer::onKeyPressed(EventKeyboard::KeyCode keyCode, Event* event)
 {
 	GameToolbox::log("Key with keycode {} pressed", static_cast<int>(keyCode));
+
+	if (keyCode == EventKeyboard::KeyCode::KEY_ESCAPE || keyCode == EventKeyboard::KeyCode::KEY_BACK)
+	{
+		if (_isPaused)
+			resumeGame();
+		else
+			pauseGame();
+		return;
+	}
+
+	if (_isPaused)
+		return;
+
 	switch (keyCode)
 	{
 	case EventKeyboard::KeyCode::KEY_R: {
 		resetLevel();
+	}
+	break;
+	case EventKeyboard::KeyCode::KEY_Z: {
+		markCheckpoint();
+	}
+	break;
+	case EventKeyboard::KeyCode::KEY_X: {
+		removeCheckpoint();
 	}
 	break;
 	case EventKeyboard::KeyCode::KEY_F: {
@@ -1858,31 +2348,33 @@ void PlayLayer::onKeyPressed(EventKeyboard::KeyCode keyCode, Event* event)
 			_player2->pushButton();
 	}
 	break;
-		break;
-	case EventKeyboard::KeyCode::KEY_BACK: {
-		_player1->releaseButton();
-		if (_isDualMode)
-			_player2->releaseButton();
-		this->exit();
-	}
 	default:
 		break;
 	}
-	if (keyCode == EventKeyboard::KeyCode::KEY_A && _player1->m_bIsPlatformer)
-		_player1->direction = -1.f;
-	else if (keyCode == EventKeyboard::KeyCode::KEY_D && _player1->m_bIsPlatformer)
-		_player1->direction = 1.f;
+	if (_player1->m_bIsPlatformer)
+	{
+		if (keyCode == EventKeyboard::KeyCode::KEY_A || keyCode == EventKeyboard::KeyCode::KEY_LEFT_ARROW)
+			_player1->direction = -1.f;
+		else if (keyCode == EventKeyboard::KeyCode::KEY_D || keyCode == EventKeyboard::KeyCode::KEY_RIGHT_ARROW)
+			_player1->direction = 1.f;
+	}
 }
 
 void PlayLayer::onKeyReleased(EventKeyboard::KeyCode keyCode, Event* event)
 {
 	GameToolbox::log("Key with keycode {} released", static_cast<int>(keyCode));
-	if ((keyCode == EventKeyboard::KeyCode::KEY_A && _player1->direction == -1.f) ||
-		(keyCode == EventKeyboard::KeyCode::KEY_D && _player1->direction == 1.f) && _player1->m_bIsPlatformer)
-		_player1->direction = 0.f;
+	if (_player1->m_bIsPlatformer)
+	{
+		const bool left = keyCode == EventKeyboard::KeyCode::KEY_A || keyCode == EventKeyboard::KeyCode::KEY_LEFT_ARROW;
+		const bool right = keyCode == EventKeyboard::KeyCode::KEY_D || keyCode == EventKeyboard::KeyCode::KEY_RIGHT_ARROW;
+		if ((left && _player1->direction < 0.f) || (right && _player1->direction > 0.f))
+			_player1->direction = 0.f;
+	}
 	switch (keyCode)
 	{
 	case EventKeyboard::KeyCode::KEY_SPACE: {
+		if (_isPaused)
+			break;
 		if (_player1->m_bIsHolding)
 			_player1->releaseButton();
 		if (_isDualMode && _player2->m_bIsHolding)
@@ -1890,6 +2382,8 @@ void PlayLayer::onKeyReleased(EventKeyboard::KeyCode keyCode, Event* event)
 	}
 	break;
 	case EventKeyboard::KeyCode::KEY_UP_ARROW: {
+		if (_isPaused)
+			break;
 		if (_player1->m_bIsHolding)
 			_player1->releaseButton();
 		if (_isDualMode && _player2->m_bIsHolding)
@@ -1902,14 +2396,30 @@ void PlayLayer::onKeyReleased(EventKeyboard::KeyCode keyCode, Event* event)
 
 void PlayLayer::tweenBottomGround(float y)
 {
+	if (!_bottomGround)
+		return;
 	_bottomGround->runAction(EaseInOut::create(ActionTween::create(0.1f, "y", _bottomGround->getPositionY(), y), 2.f));
-	//_bottomGround->setPositionY(y);
 }
 
 void PlayLayer::tweenCeiling(float y)
 {
+	if (!_ceiling)
+		return;
 	_ceiling->runAction(EaseInOut::create(ActionTween::create(0.1f, "y", _ceiling->getPositionY(), y), 2.f));
-	//_ceiling->setPositionY(y);
+}
+
+float PlayLayer::flyingFloorY(const PlayerObject* player) const
+{
+	const float camY = cameraFollow ? cameraFollow->getPositionY() : m_obCamPos.y;
+	const float groundY = _bottomGround ? _bottomGround->getPositionY() : 0.f;
+	return groundY + camY + (player && player->_mini ? 87.f : 93.f);
+}
+
+float PlayLayer::flyingCeilY(const PlayerObject* player) const
+{
+	if (_ceiling)
+		return _ceiling->getPositionY() - (player && player->_mini ? 234.f : 240.f) + m_fCameraYCenter - 12.f;
+	return m_fCameraYCenter + (player && player->_mini ? 69.f : 75.f);
 }
 
 void PlayLayer::changePlayerSpeed(int speed)
@@ -1954,6 +2464,230 @@ void PlayLayer::changeGravity(bool gravityFlipped)
 	_player1->flipGravity(gravityFlipped);
 	if (_isDualMode)
 		_player2->flipGravity(!gravityFlipped);
+}
+
+void PlayLayer::setMirror(bool mirror)
+{
+	_isMirror = mirror;
+	if (cameraFollow)
+		cameraFollow->setScaleX(mirror ? -1.f : 1.f);
+	if (m_pBG)
+		m_pBG->setScaleX(mirror ? -1.f : 1.f);
+}
+
+GameObject* PlayLayer::findTeleportDestination(GameObject* src)
+{
+	if (!src)
+		return nullptr;
+
+	// 2.2-style: target group ID on the portal
+	const int targetGroup = src->_teleportTargetGroupId;
+	if (targetGroup > 0 && _groups.contains(targetGroup) && !_groups[targetGroup]._objects.empty())
+	{
+		for (GameObject* obj : _groups[targetGroup]._objects)
+		{
+			if (obj && obj != src)
+				return obj;
+		}
+	}
+
+	GameObject* best = nullptr;
+	float bestDist = 1e12f;
+	const int link = src->_linkedGroupId;
+
+	for (GameObject* obj : _pObjects)
+	{
+		if (!obj || obj == src)
+			continue;
+
+		const bool isPortal = obj->getGameObjectType() == kGameObjectTypeTeleportPortal;
+		const bool isDestPad = obj->getID() == 749 || obj->getID() == 747;
+		if (!isPortal && !isDestPad)
+			continue;
+
+		bool linked = false;
+		if (link > 0)
+		{
+			if (obj->_linkedGroupId == link)
+				linked = true;
+			for (int g : obj->_groups)
+			{
+				if (g == link)
+				{
+					linked = true;
+					break;
+				}
+			}
+		}
+		if (!linked)
+		{
+			for (int g : src->_groups)
+			{
+				for (int g2 : obj->_groups)
+				{
+					if (g == g2 && g > 0)
+					{
+						linked = true;
+						break;
+					}
+				}
+				if (linked)
+					break;
+			}
+		}
+		if (!linked)
+			continue;
+
+		const float dist = obj->getPosition().distance(src->getPosition());
+		if (dist > 1.f && dist < bestDist)
+		{
+			bestDist = dist;
+			best = obj;
+		}
+	}
+	return best;
+}
+
+void PlayLayer::teleportPlayer(PlayerObject* player, GameObject* from)
+{
+	if (!player || !from)
+		return;
+
+	// Official GJBaseGameLayer::getPortalTargetPos:
+	// For classic portal 747 → (player.x, portal.y + teleportYOffset)
+	// Otherwise → target object position when available.
+	Vec2 dest;
+	GameObject* target = findTeleportDestination(from);
+
+	if (from->getID() == 747 || (!target && (from->_teleportYOffset != 0.f || from->getID() == 749)))
+	{
+		dest.x = player->getPositionX();
+		dest.y = from->getPositionY() + from->_teleportYOffset;
+	}
+	else if (target)
+	{
+		dest = target->getPosition();
+	}
+	else
+	{
+		return;
+	}
+
+	if (from->_teleportIgnoreX)
+		dest.x = player->getPositionX();
+	if (from->_teleportIgnoreY)
+		dest.y = player->getPositionY();
+
+	player->setPosition(dest);
+	player->setYVel(0);
+	player->setIsOnGround(false);
+}
+
+void PlayLayer::spiderTeleport(PlayerObject* player)
+{
+	if (!player)
+		return;
+
+	const bool searchUp = !player->isGravityFlipped();
+	const Rect playerBounds = player->_mini ? player->getOuterBounds(0.6f, 0.6f) : player->getOuterBounds();
+	const float playerMidX = playerBounds.getMidX();
+	const float playerTop = playerBounds.getMaxY();
+	const float playerBot = playerBounds.getMinY();
+
+	float bestY = searchUp ? 1e12f : -1e12f;
+	bool found = false;
+
+	const int currentSection = sectionForPos(player->getPositionX());
+	for (int i = currentSection - 2; i <= currentSection + 1; ++i)
+	{
+		if (i < 0 || i >= static_cast<int>(_sectionObjects.size()))
+			continue;
+		for (GameObject* obj : _sectionObjects[i])
+		{
+			if (!obj || !obj->isActive())
+				continue;
+			const GameObjectType type = obj->getGameObjectType();
+			if (type != kGameObjectTypeSolid && type != kGameObjectTypeSlope)
+				continue;
+			const Rect box = obj->getOuterBounds();
+			if (box.size.width <= 0.f || box.size.height <= 0.f)
+				continue;
+			if (playerBounds.getMaxX() <= box.getMinX() || playerBounds.getMinX() >= box.getMaxX())
+				continue;
+
+			if (searchUp)
+			{
+				if (box.getMinY() >= playerTop - 2.f && box.getMinY() < bestY)
+				{
+					bestY = box.getMinY();
+					found = true;
+				}
+			}
+			else if (box.getMaxY() <= playerBot + 2.f && box.getMaxY() > bestY)
+			{
+				bestY = box.getMaxY();
+				found = true;
+			}
+		}
+	}
+
+	const float halfH = playerBounds.size.height * 0.5f;
+	if (found)
+	{
+		float newY = searchUp ? (bestY - halfH) : (bestY + halfH);
+		player->setPositionY(newY);
+	}
+	else
+	{
+		if (searchUp)
+			player->setPositionY(flyingCeilY(player));
+		else
+			player->setPositionY(flyingFloorY(player));
+	}
+
+	player->setYVel(0);
+	player->flipGravity(!player->isGravityFlipped());
+	player->hitGround(player->isGravityFlipped());
+}
+
+bool PlayLayer::tryActivateCountTrigger(EffectGameObject* trigger)
+{
+	if (!trigger)
+		return false;
+	const int value = _itemCounts[trigger->_itemID];
+	const int target = trigger->_countTarget;
+	bool pass = value == target;
+	if (trigger->_countCompare == 1)
+		pass = value > target;
+	else if (trigger->_countCompare == 2)
+		pass = value < target;
+	if (!pass)
+		return false;
+
+	if (_groups.contains(trigger->_targetGroupId))
+	{
+		for (GameObject* gameObj : _groups[trigger->_targetGroupId]._objects)
+		{
+			if (gameObj && gameObj->_isTrigger)
+				static_cast<EffectGameObject*>(gameObj)->triggerActivated(0.f);
+		}
+	}
+	return true;
+}
+
+void PlayLayer::fireOnDeathTriggers()
+{
+	for (GameObject* obj : _pObjects)
+	{
+		if (!obj || !obj->_isTrigger)
+			continue;
+		if (obj->getID() != 1812)
+			continue;
+		auto* trigger = static_cast<EffectGameObject*>(obj);
+		if (trigger->_spawnTriggered)
+			continue;
+		trigger->triggerActivated(0.f);
+	}
 }
 
 PlayLayer* PlayLayer::getInstance()

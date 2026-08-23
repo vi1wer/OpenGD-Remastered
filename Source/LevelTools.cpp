@@ -17,6 +17,7 @@
 *************************************************************************/
 
 #include "LevelTools.h"
+#include "GJGameLevel.h"
 #include "base64.h"
 #include "external/constants.h"
 #include <cstring>
@@ -61,6 +62,7 @@ std::string LevelTools::getAudioFilename(int lid)
 		case 18: return "GeometricalDominator.mp3";
 		case 19: return "Deadlocked.mp3";
 		case 20: return "Fingerdash.mp3";
+		case 21: return "Dash.mp3";
 		default: return "StereoMadness.mp3";
 	}
 }
@@ -88,6 +90,7 @@ std::string LevelTools::getAudioTitle(int lid) {
 		case 18: return "Geometrical Dominator";
 		case 19: return "Deadlocked";
 		case 20: return "Fingerdash";
+		case 21: return "Dash";
 		default: return "Stereo Madness";
 	}
 }
@@ -117,6 +120,7 @@ int LevelTools::getArtistForAudio(int lid)
 		case 18: return ARTIST_WATERFLAME;
 		case 19: return ARTIST_F777;
 		case 20: return ARTIST_MDK;
+		case 21: return ARTIST_MDK;
 		default: return ARTIST_FBOUND;
 	}
 }
@@ -211,6 +215,127 @@ std::string LevelTools::getURLForAudio(int lid)
 		case 18: return "https://www.robtopgames.com/geometricaldominator";
 		case 19: return "https://www.youtube.com/watch?v=QRGkFkf2r0U";
 		case 20: return "https://www.youtube.com/watch?v=BuPmq7yjDnI";
+		case 21: return "https://www.youtube.com/watch?v=rI_y2f5xu6I";
 		default: return "https://www.youtube.com/watch?v=JhKyKEDxo8Q";
 	}
+}
+
+void LevelTools::applyMainLevelRating(GJGameLevel* level)
+{
+	if (!level)
+		return;
+
+	level->_difficultyDenominator = 10;
+	level->_demon = false;
+	level->_demonDifficulty = 0;
+	level->_auto = false;
+
+	// Official RobTop main levels (level ID 1..22, including Dash).
+	// Difficulty numerator: Easy=10, Normal=20, Hard=30, Harder=40, Insane=50.
+	switch (level->_levelID)
+	{
+	case 1:
+		level->_difficultyNumerator = 10;
+		level->_stars = 1;
+		break;
+	case 2:
+		level->_difficultyNumerator = 10;
+		level->_stars = 2;
+		break;
+	case 3:
+		level->_difficultyNumerator = 20;
+		level->_stars = 3;
+		break;
+	case 4:
+		level->_difficultyNumerator = 20;
+		level->_stars = 4;
+		break;
+	case 5:
+		level->_difficultyNumerator = 30;
+		level->_stars = 5;
+		break;
+	case 6:
+		level->_difficultyNumerator = 30;
+		level->_stars = 6;
+		break;
+	case 7:
+		level->_difficultyNumerator = 40;
+		level->_stars = 7;
+		break;
+	case 8:
+		level->_difficultyNumerator = 40;
+		level->_stars = 8;
+		break;
+	case 9:
+		level->_difficultyNumerator = 40;
+		level->_stars = 9;
+		break;
+	case 10:
+		level->_difficultyNumerator = 50;
+		level->_stars = 10;
+		break;
+	case 11:
+		level->_difficultyNumerator = 50;
+		level->_stars = 11;
+		break;
+	case 12:
+		level->_difficultyNumerator = 50;
+		level->_stars = 12;
+		break;
+	case 13:
+		level->_difficultyNumerator = 50;
+		level->_stars = 10;
+		break;
+	case 14: // Clubstep - Easy Demon
+		level->_difficultyNumerator = 50;
+		level->_stars = 14;
+		level->_demon = true;
+		level->_demonDifficulty = 3;
+		break;
+	case 15:
+		level->_difficultyNumerator = 50;
+		level->_stars = 12;
+		break;
+	case 16:
+		level->_difficultyNumerator = 40;
+		level->_stars = 12;
+		break;
+	case 17:
+		level->_difficultyNumerator = 40;
+		level->_stars = 10;
+		break;
+	case 18: // Theory of Everything 2 - Easy Demon
+		level->_difficultyNumerator = 50;
+		level->_stars = 14;
+		level->_demon = true;
+		level->_demonDifficulty = 3;
+		break;
+	case 19:
+		level->_difficultyNumerator = 40;
+		level->_stars = 10;
+		break;
+	case 20: // Deadlocked - Medium Demon
+		level->_difficultyNumerator = 50;
+		level->_stars = 15;
+		level->_demon = true;
+		level->_demonDifficulty = 4;
+		break;
+	case 21:
+		level->_difficultyNumerator = 40;
+		level->_stars = 8;
+		break;
+	case 22: // Dash - Harder
+		level->_difficultyNumerator = 40;
+		level->_stars = 8;
+		break;
+	default:
+		level->_difficultyDenominator = 0;
+		level->_difficultyNumerator = 0;
+		level->_stars = 0;
+		break;
+	}
+
+	// Main soundtrack index is levelID - 1 (Stereo Madness = 0).
+	if (level->_levelID >= 1 && level->_levelID <= 22)
+		level->_musicID = level->_levelID - 1;
 }

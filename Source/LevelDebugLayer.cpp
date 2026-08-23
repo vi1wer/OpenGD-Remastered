@@ -37,6 +37,7 @@
 #endif
 #include <AudioEngine.h>
 #include <Macros.h>
+#include <fmt/format.h>
 
 USING_NS_AX;
 USING_NS_AX_EXT;

@@ -29,18 +29,22 @@
 #include "PlayLayer.h"
 #include <network/HttpClient.h>
 #include "2d/Menu.h"
+#include "2d/Sprite.h"
+#include "2d/SpriteFrameCache.h"
 #include "2d/Transition.h"
 #include "EventListenerKeyboard.h"
 #include "base/Director.h"
 #include "EventDispatcher.h"
 #include "GJSearchObject.h"
 #include "SecretLayer2.h"
+#include "ComingSoonLayer.h"
 
 #include "GameToolbox/log.h"
 #include "GameToolbox/nodes.h"
 #include "GameToolbox/conv.h"
 #include "platform/FileUtils.h"
 #include <filesystem>
+#include <string_view>
 
 
 USING_NS_AX;
@@ -75,123 +79,164 @@ bool CreatorLayer::init()
 	auto director = Director::getInstance();
 	const auto& winSize = director->getWinSize();
 
-	GameToolbox::createBG(this);
-	GameToolbox::createAllCorners(this);
+	GameToolbox::createBG(this, {0, 102, 255});
+	// Official 2.2 CreatorLayer only has left side art (lock + door sit on the right).
+	GameToolbox::createCorners(this, true, false, true, false);
 
-	auto menu = Menu::create();
+	auto* exitMenu = Menu::create();
+	exitMenu->setPosition({0, 0});
+	addChild(exitMenu);
 
-	auto backBtn = MenuItemSpriteExtra::create("GJ_arrow_03_001.png", [](Node*) {
-		Director::getInstance()->replaceScene(TransitionFade::create(.5, MenuLayer::scene()));
+	auto* backBtn = MenuItemSpriteExtra::create("GJ_arrow_01_001.png", [](Node*) {
+		Director::getInstance()->replaceScene(TransitionFade::create(.5f, MenuLayer::scene()));
 	});
-	backBtn->setPosition(menu->convertToNodeSpace({ 24.0, winSize.height - 23.0f }));
-	menu->addChild(backBtn);
+	backBtn->setPosition({24.0f, winSize.height - 23.0f});
+	exitMenu->addChild(backBtn);
 
-	Sprite* secretLock = Sprite::createWithSpriteFrameName("GJ_lock_open_001.png");
-	MenuItemSpriteExtra* secretLockBtn = MenuItemSpriteExtra::create(secretLock, [](Node*) {
-		Director::getInstance()->replaceScene(TransitionFade::create(.5, SecretLayer2::scene()));
-	});
-	menu->addChild(secretLockBtn);
-	secretLockBtn->setPosition(menu->convertToNodeSpace({winSize.width - 23.0f, winSize.height - 24.0f})); // Wrong cuz the function doesnt want to decompile for some reason
-	
-	auto buttonTexture = [](int n) -> const char*
+	struct CreatorButton
 	{
-		switch (n) 
-		{
-			default: return "GJ_createBtn_001.png"; 
-			case 1: return "GJ_savedBtn_001.png";
-			case 2: return "GJ_highscoreBtn_001.png";
-			case 3: return "GJ_challengeBtn_001.png";
-			case 4: return "GJ_dailyBtn_001.png";
-			case 5: return "GJ_weeklyBtn_001.png";
-			case 6: return "GJ_gauntletsBtn_001.png";
-			case 7: return "GJ_featuredBtn_001.png";
-			//case 8: return "GJ_fameBtn_001.png"; hall of fame was removed from 2.2
-			case 9: return "GJ_mapPacksBtn_001.png";
-			case 10: return "GJ_searchBtn_001.png";
-		}
+		const char* frame;
+		const char* name;
+		bool locked;
 	};
-	
-	auto onButtonsCallback = [this](Node* btn) -> void
-	{
-		GameToolbox::log("tag: {}", btn->getTag());
+
+	// Official 2.2 order: 5 columns x 3 rows.
+	const CreatorButton buttons[] = {
+		{"GJ_createBtn_001.png", "Create", false},
+		{"GJ_savedBtn_001.png", "Saved", false},
+		{"GJ_highscoreBtn_001.png", "Scores", false},
+		{"GJ_challengeBtn_001.png", "Quests", false},
+		{"GJ_versusBtn_001.png", "Versus", true},
+		{"GJ_mapBtn_001.png", "The Map", true},
+		{"GJ_dailyBtn_001.png", "Daily", false},
+		{"GJ_weeklyBtn_001.png", "Weekly", false},
+		{"GJ_eventBtn_001.png", "Event", false},
+		{"GJ_gauntletsBtn_001.png", "Gauntlets", false},
+		{"GJ_featuredBtn_001.png", "Featured", false},
+		{"GJ_listsBtn_001.png", "Lists", false},
+		{"GJ_pathsBtn_001.png", "Paths", false},
+		{"GJ_mapPacksBtn_001.png", "Map Packs", false},
+		{"GJ_searchBtn_001.png", "Search", false},
+	};
+
+	auto comingSoon = [this](std::string_view name) {
+		auto* banner = ComingSoonLayer::create(name);
+		if (!banner)
+			return;
+		addChild(banner, 200);
+		banner->show();
+	};
+
+	auto onButtonsCallback = [this, comingSoon](Node* btn) {
 		switch (btn->getTag())
-		{	
-			case 0: {
-				auto level = GJGameLevel::createWithMinimumData("Unnamed 0", "You", 33);
-
-				auto editor = LevelEditorLayer::scene(level);
-
-				// addChild(editor, 1000);
-
-				Director::getInstance()->replaceScene(ax::TransitionFade::create(0.5f, editor));
-
-				return;
-			}
-			case 1:
+		{
+		case 0: {
+			auto* level = GJGameLevel::createWithMinimumData("Unnamed 0", "You", 33);
+			Director::getInstance()->replaceScene(TransitionFade::create(0.5f, LevelEditorLayer::scene(level)));
+			return;
+		}
+		case 1: {
+#ifdef _WIN32
+			auto* fu = FileUtils::getInstance();
+			std::filesystem::path appdata(fu->getWritablePath());
+			appdata = appdata.append("../GeometryDash/CCLocalLevels.dat");
+			if (!std::filesystem::exists(appdata))
 			{
-				#ifdef _WIN32
-				auto fu = ax::FileUtils::getInstance();
-				std::filesystem::path appdata(fu->getWritablePath());
-				appdata = appdata.append("../GeometryDash/CCLocalLevels.dat");
-				GameToolbox::log("gd save file: {}", appdata.string());
-				
-				if(!std::filesystem::exists(appdata)) return;
-				
-				std::string data = fu->getStringFromFile(appdata.string());
-				if(data.empty()) return;
-				data = GJGameLevel::decompressLvlStr(GameToolbox::xorFunction(data, 11));
-				//GameToolbox::log("{}", data);
-				
-				//best xml parser ever made
-				size_t pos = data.find("opengd");
-				if(pos == std::string::npos) return;
-				
-				size_t startPos = data.find("H4sIAAAAAAAA", pos);
-				if(startPos == std::string::npos) return;
-				
-				size_t endPos = data.find("</s>");
-				if(endPos == std::string::npos) return;
-				
-				auto level = GJGameLevel::createWithMinimumData("OpenGD", "creator", 33);
-				level->_levelString = data.substr(startPos, endPos - startPos);
-				
-				Director::getInstance()->pushScene(ax::TransitionFade::create(0.5f, PlayLayer::scene(level)));
-
-				#endif
+				comingSoon("Saved");
 				return;
 			}
-			case 7: return  Director::getInstance()->pushScene(TransitionFade::create(0.5f, LevelBrowserLayer::scene(GJSearchObject::create(kGJSearchTypeFeatured))));
-			case 8: return  Director::getInstance()->pushScene(TransitionFade::create(0.5f, LevelBrowserLayer::scene(GJSearchObject::create(kGJSearchTypeHallOfFame))));
-			case 10: return Director::getInstance()->pushScene(TransitionFade::create(0.5f, LevelSearchLayer::scene()));
+			std::string data = fu->getStringFromFile(appdata.string());
+			if (data.empty())
+			{
+				comingSoon("Saved");
+				return;
+			}
+			data = GJGameLevel::decompressLvlStr(GameToolbox::xorFunction(data, 11));
+			size_t pos = data.find("opengd");
+			if (pos == std::string::npos)
+			{
+				comingSoon("Saved");
+				return;
+			}
+			size_t startPos = data.find("H4sIAAAAAAAA", pos);
+			if (startPos == std::string::npos)
+			{
+				comingSoon("Saved");
+				return;
+			}
+			size_t endPos = data.find("</s>");
+			if (endPos == std::string::npos)
+			{
+				comingSoon("Saved");
+				return;
+			}
+			auto* level = GJGameLevel::createWithMinimumData("OpenGD", "creator", 33);
+			level->_levelString = data.substr(startPos, endPos - startPos);
+			Director::getInstance()->pushScene(TransitionFade::create(0.5f, PlayLayer::scene(level)));
+#else
+			comingSoon("Saved");
+#endif
+			return;
+		}
+		case 10:
+			Director::getInstance()->pushScene(
+				TransitionFade::create(0.5f, LevelBrowserLayer::scene(GJSearchObject::create(kGJSearchTypeFeatured))));
+			return;
+		case 13:
+			Director::getInstance()->pushScene(
+				TransitionFade::create(0.5f, LevelBrowserLayer::scene(GJSearchObject::create(kGJSearchTypeMapPack))));
+			return;
+		case 14:
+			Director::getInstance()->pushScene(TransitionFade::create(0.5f, LevelSearchLayer::scene()));
+			return;
+		default:
+			comingSoon(btn->getName());
+			return;
 		}
 	};
-	
-	for (int i = 0; i < 11; i++)
+
+	auto* gridMenu = Menu::create();
+	gridMenu->setPosition(winSize / 2);
+	addChild(gridMenu);
+
+	for (int i = 0; i < 15; i++)
 	{
-		auto spr = Sprite::createWithSpriteFrameName(buttonTexture(i));
-		spr->setScale(.85f);
-		auto btn = MenuItemSpriteExtra::create(spr, onButtonsCallback);
+		auto* spr = Sprite::createWithSpriteFrameName(buttons[i].frame);
+		if (!spr)
+			continue;
+		spr->setStretchEnabled(false);
+		if (buttons[i].locked)
+			spr->setColor({90, 90, 90});
+		spr->setScale(0.8f);
+		auto* btn = MenuItemSpriteExtra::create(spr, onButtonsCallback);
 		btn->setTag(i);
-		Vec2 pos;
-		if (i < 3)
-		{
-			// First row with 3 elements
-			pos = { (i - 1) * 100.0f, 97.0f };
-		}
-		else
-		{
-			// Rows below with 4 elements each
-			int row = (i - 3) / 4;
-			int col = (i - 3) % 4;
-			pos = { col * 100.0f, -row * 97.0f };
-			pos.x -= 150.0f;
-		}
-		btn->setPosition(pos);
-		menu->addChild(btn);
+		btn->setName(buttons[i].name);
+		btn->setPosition({(i % 5 - 2) * 92.0f, (1 - i / 5) * 88.0f});
+		gridMenu->addChild(btn);
 	}
 
-	
-	addChild(menu);
+	if (auto* secretLock = Sprite::createWithSpriteFrameName("GJ_lock_open_001.png"))
+	{
+		secretLock->setStretchEnabled(false);
+		auto* secretLockBtn = MenuItemSpriteExtra::create(secretLock, [](Node*) {
+			Director::getInstance()->replaceScene(TransitionFade::create(.5f, SecretLayer2::scene()));
+		});
+		secretLockBtn->setPosition({winSize.width / 2 - 22.0f, winSize.height / 2 - 24.0f});
+		gridMenu->addChild(secretLockBtn);
+	}
+
+	const char* doorFrame = "secretDoorBtn_open_001.png";
+	if (!SpriteFrameCache::getInstance()->getSpriteFrameByName(doorFrame))
+		doorFrame = "secretDoorBtn2_open_001.png";
+	if (auto* doorSpr = Sprite::createWithSpriteFrameName(doorFrame))
+	{
+		doorSpr->setStretchEnabled(false);
+		auto* doorBtn = MenuItemSpriteExtra::create(doorSpr, [](Node*) {
+			Director::getInstance()->replaceScene(TransitionFade::create(.5f, SecretLayer2::scene()));
+		});
+		doorBtn->setPosition({winSize.width / 2 - 18.0f, 18.0f - winSize.height / 2});
+		gridMenu->addChild(doorBtn);
+	}
 	
 	auto listener = EventListenerKeyboard::create();
 

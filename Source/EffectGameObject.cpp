@@ -18,12 +18,18 @@
 
 #include "EffectGameObject.h"
 #include "2d/ActionEase.h"
+#include "2d/ActionInstant.h"
+#include "2d/ActionInterval.h"
+#include "2d/ParticleSystemQuad.h"
 #include "BaseGameLayer.h"
 #include "ColorAction.h"
+#include "SpriteColor.h"
 #include "GameToolbox/conv.h"
 #include "GameToolbox/log.h"
 #include "GroupColorAction.h"
 #include "PlayLayer.h"
+#include "UTF8.h"
+#include <cmath>
 
 USING_NS_AX;
 
@@ -91,12 +97,14 @@ Action* EffectGameObject::actionEasing(ActionInterval* ac, int ease, float rate)
 
 void EffectGameObject::triggerActivated(float)
 {
-	if (!_bgl || (_wasTriggerActivated && !_spawnTriggered))
+	if (!_bgl)
+		return;
+	if (_wasTriggerActivated && !_multiTriggered)
 		return;
 
 	auto pl = PlayLayer::getInstance();
 
-	// this->_wasTriggerActivated = true;
+	_wasTriggerActivated = true;
 
 	auto id = getID();
 
@@ -143,9 +151,10 @@ void EffectGameObject::triggerActivated(float)
 			_bgl->_colorChannels.at(_targetColorId)._applyHsv = true;
 		}
 
-		_bgl->runAction(ColorAction::create(
-			_duration, &_bgl->_colorChannels.at(_targetColorId), _bgl->_colorChannels.at(_targetColorId)._color, _color,
-			_bgl->_colorChannels.at(_targetColorId)._opacity, _opacity * 255.0f, _copiedColorId, &_hsv));
+		if (auto* colorAction = ColorAction::create(
+				_duration, &_bgl->_colorChannels.at(_targetColorId), _bgl->_colorChannels.at(_targetColorId)._color, _color,
+				_bgl->_colorChannels.at(_targetColorId)._opacity, _opacity * 255.0f, _copiedColorId, &_hsv))
+			_bgl->runAction(colorAction);
 		_bgl->_colorChannels.at(_targetColorId)._blending = _blending;
 	}
 	break;
@@ -178,11 +187,22 @@ void EffectGameObject::triggerActivated(float)
 			pl->_enterEffectID = 3;
 		break;
 	case 901: {
-		_bgl->runMoveCommand(_duration, _offset, _easing, _easeRate, _targetGroupId);
+		float dur = _duration;
+		if ((_lockToPlayerX || _lockToPlayerY) && dur <= 0.f)
+			dur = 9999.f;
+		_bgl->runMoveCommand(dur, _offset, _easing, _easeRate, _targetGroupId, _lockToPlayerX, _lockToPlayerY);
 	}
 	break;
 	case 1007:
-		runAction(ActionTween::create(_duration, "fade", _bgl->_groups[_targetGroupId]._alpha, _opacity));
+		if (!_bgl->_groups.contains(_targetGroupId))
+		{
+			GroupProperties gp;
+			_bgl->_groups.insert({_targetGroupId, gp});
+		}
+		if (_duration <= 0.f || !isRunning())
+			_bgl->_groups[_targetGroupId]._alpha = _opacity;
+		else
+			runAction(ActionTween::create(_duration, "fade", _bgl->_groups[_targetGroupId]._alpha, _opacity));
 		break;
 	case 1006: {
 
@@ -226,10 +246,17 @@ void EffectGameObject::triggerActivated(float)
 
 		if (_pulseType == 0)
 		{
-			auto colPointer = &_bgl->_colorChannels.at(_targetGroupId);
-			seq = ax::Sequence::create({ColorAction::create(_fadeIn, colPointer, original, target),
-										ColorAction::create(_hold, colPointer, target, target),
-										ColorAction::create(_fadeOut, colPointer, target, original)});
+			auto* colPointer = &_bgl->_colorChannels.at(_targetGroupId);
+			ax::Vector<FiniteTimeAction*> pulseActions;
+			if (auto* a = ColorAction::create(_fadeIn > 0.f ? _fadeIn : 0.01f, colPointer, original, target))
+				pulseActions.pushBack(a);
+			if (auto* a = ColorAction::create(_hold > 0.f ? _hold : 0.01f, colPointer, target, target))
+				pulseActions.pushBack(a);
+			if (auto* a = ColorAction::create(_fadeOut > 0.f ? _fadeOut : 0.01f, colPointer, target, original))
+				pulseActions.pushBack(a);
+			if (pulseActions.empty())
+				break;
+			seq = ax::Sequence::create(pulseActions);
 		}
 		else
 		{
@@ -247,47 +274,239 @@ void EffectGameObject::triggerActivated(float)
 			else
 				groupPointer->groupState = GroupProperties::GroupState::DETAIL_ONLY;
 
-			seq = ax::Sequence::create({GroupColorAction::create(_fadeIn, groupPointer, original, target, false),
-										GroupColorAction::create(_hold, groupPointer, target, target, false),
-										GroupColorAction::create(_fadeOut, groupPointer, target, original, true)});
+			ax::Vector<FiniteTimeAction*> pulseActions;
+			if (auto* a = GroupColorAction::create(_fadeIn > 0.f ? _fadeIn : 0.01f, groupPointer, original, target, false))
+				pulseActions.pushBack(a);
+			if (auto* a = GroupColorAction::create(_hold > 0.f ? _hold : 0.01f, groupPointer, target, target, false))
+				pulseActions.pushBack(a);
+			if (auto* a = GroupColorAction::create(_fadeOut > 0.f ? _fadeOut : 0.01f, groupPointer, target, original, true))
+				pulseActions.pushBack(a);
+			if (pulseActions.empty())
+				break;
+			seq = ax::Sequence::create(pulseActions);
 		}
 
-		_bgl->runAction(seq);
+		if (seq)
+			_bgl->runAction(seq);
 		break;
 	}
 	case 1049:
+		if (!_bgl->_groups.contains(_targetGroupId))
+			break;
 		if (_activateGroup)
 		{
-			for (size_t i = 0; i < _bgl->_groups[_targetGroupId]._objects.size(); i++)
+			for (GameObject* obj : _bgl->_groups[_targetGroupId]._objects)
 			{
-				_bgl->_groups[_targetGroupId]._objects[i]->_toggledOn = true;
+				if (obj)
+					obj->_toggledOn = true;
 			}
 		}
 		else
 		{
-			for (size_t i = 0; i < _bgl->_groups[_targetGroupId]._objects.size(); i++)
+			for (GameObject* obj : _bgl->_groups[_targetGroupId]._objects)
 			{
-				_bgl->_groups[_targetGroupId]._objects[i]->_toggledOn = false;
-				_bgl->_groups[_targetGroupId]._objects[i]->removeFromGameLayer();
+				if (!obj)
+					continue;
+				obj->_toggledOn = false;
+				obj->removeFromGameLayer();
 			}
 		}
 
 		break;
-	case 1268:
-		scheduleOnce(
-			[&](float dt) {
-				for (GameObject* gameObj : _bgl->_groups[_targetGroupId]._objects)
+	case 1268: {
+		const int groupId = _targetGroupId;
+		auto fireSpawn = [bgl = _bgl, groupId](float dt) {
+			if (!bgl || !bgl->_groups.contains(groupId))
+				return;
+			for (GameObject* gameObj : bgl->_groups[groupId]._objects)
+			{
+				if (gameObj && gameObj->_isTrigger)
+					static_cast<EffectGameObject*>(gameObj)->triggerActivated(dt);
+			}
+		};
+		if (pl)
+			pl->scheduleOnce([fireSpawn](float dt) { fireSpawn(dt); }, std::max(_spawnDelay, 0.f),
+							 StringUtils::format("spawn_%p", this));
+		else
+			fireSpawn(0.f);
+		break;
+	}
+	case 31:
+	case 32:
+	case 33:
+	case 34:
+	case 104:
+	case 105:
+	case 221:
+	case 717:
+	case 718:
+	case 743:
+	case 744:
+	case 915: {
+		if (!_bgl->_colorChannels.contains(_targetColorId))
+		{
+			_bgl->_colorChannels.insert({_targetColorId, SpriteColor(Color3B::WHITE, 255, 0)});
+			_bgl->_originalColors.insert({_targetColorId, SpriteColor(Color3B::WHITE, 255, 0)});
+		}
+		if (auto* colorAction = ColorAction::create(
+				_duration, &_bgl->_colorChannels.at(_targetColorId), _bgl->_colorChannels.at(_targetColorId)._color, _color,
+				_bgl->_colorChannels.at(_targetColorId)._opacity, _opacity * 255.0f, _copiedColorId, &_hsv))
+			_bgl->runAction(colorAction);
+		_bgl->_colorChannels.at(_targetColorId)._blending = _blending;
+		break;
+	}
+	case 1346: {
+		if (!_bgl->_groups.contains(_targetGroupId))
+			break;
+		const float degrees = _rotation != 0.f ? _rotation : _offset.x;
+		const float dur = _duration > 0.f ? _duration : 0.01f;
+		for (GameObject* obj : _bgl->_groups[_targetGroupId]._objects)
+		{
+			if (!obj)
+				continue;
+			auto* rot = RotateBy::create(dur, degrees);
+			obj->runAction(actionEasing(rot, _easing, _easeRate));
+		}
+		break;
+	}
+	case 1347:
+	case 1814:
+		_bgl->runFollowCommand(_duration > 0.f ? _duration : 9999.f, _targetGroupId,
+							   _lockToPlayerX || id == 1814, _lockToPlayerY || id == 1814);
+		break;
+	case 1520:
+		if (pl)
+		{
+			pl->_shakeTime = _duration > 0.f ? _duration : 0.4f;
+			pl->_shakeStrength = _offset.x != 0.f ? std::abs(_offset.x) : 5.f;
+		}
+		break;
+	case 1585:
+		if (_bgl->_groups.contains(_targetGroupId))
+		{
+			for (GameObject* obj : _bgl->_groups[_targetGroupId]._objects)
+			{
+				if (!obj)
+					continue;
+				if (obj->_particle)
 				{
-					if (gameObj->_isTrigger)
-					{
-						EffectGameObject* trigger = static_cast<EffectGameObject*>(gameObj);
-						if (trigger->_spawnTriggered)
-							trigger->triggerActivated(dt);
-					}
+					obj->_particle->resetSystem();
+					obj->_particle->resumeEmissions();
 				}
-			},
-			_spawnDelay, "time");
-
+				else
+				{
+					obj->runAction(Sequence::create(
+						FadeTo::create(0.08f, 80), FadeTo::create(0.08f, 255), nullptr));
+				}
+			}
+		}
+		break;
+	case 1595:
+		if (_bgl->_groups.contains(_targetGroupId))
+		{
+			for (GameObject* gameObj : _bgl->_groups[_targetGroupId]._objects)
+			{
+				if (gameObj && gameObj->_isTrigger)
+					static_cast<EffectGameObject*>(gameObj)->triggerActivated(0.f);
+			}
+		}
+		break;
+	case 1611:
+	case 1811:
+		if (pl)
+			pl->tryActivateCountTrigger(this);
+		break;
+	case 1616:
+		_bgl->stopGroupActions(_targetGroupId);
+		break;
+	case 1812:
+		if (_bgl->_groups.contains(_targetGroupId))
+		{
+			for (GameObject* gameObj : _bgl->_groups[_targetGroupId]._objects)
+			{
+				if (gameObj && gameObj->_isTrigger)
+					static_cast<EffectGameObject*>(gameObj)->triggerActivated(0.f);
+			}
+		}
+		break;
+	case 1815:
+	case 1912:
+		if (_bgl->_groups.contains(_targetGroupId))
+		{
+			for (GameObject* gameObj : _bgl->_groups[_targetGroupId]._objects)
+			{
+				if (gameObj && gameObj->_isTrigger)
+					static_cast<EffectGameObject*>(gameObj)->triggerActivated(0.f);
+			}
+		}
+		break;
+	case 1817: {
+		if (pl)
+		{
+			pl->_itemCounts[_itemID] += _activateGroup ? 1 : -1;
+			for (auto& [gid, group] : _bgl->_groups)
+			{
+				for (GameObject* gameObj : group._objects)
+				{
+					if (!gameObj || !gameObj->_isTrigger)
+						continue;
+					const int tid = gameObj->getID();
+					if (tid == 1611 || tid == 1811)
+						pl->tryActivateCountTrigger(static_cast<EffectGameObject*>(gameObj));
+				}
+			}
+		}
+		break;
+	}
+	case 1818:
+		if (pl)
+			pl->_enterEffectID = 1;
+		break;
+	case 1819:
+		if (pl)
+			pl->_enterEffectID = 0;
+		break;
+	case 900:
+	case 55:
+	case 56:
+	case 57:
+	case 58:
+	case 59:
+		if (pl)
+			pl->_enterEffectID = (id % 7) + 1;
+		break;
+	case 1913:
+	case 1914:
+	case 1916:
+	case 1917:
+	case 1931:
+	case 1932:
+	case 1934:
+	case 1935:
+	case 2015:
+	case 2016:
+	case 2062:
+	case 2067:
+	case 2068:
+	case 2701:
+	case 2702:
+		if (_targetGroupId >= 0 && _bgl->_groups.contains(_targetGroupId))
+		{
+			for (GameObject* obj : _bgl->_groups[_targetGroupId]._objects)
+			{
+				if (!obj)
+					continue;
+				if (_activateGroup)
+					obj->_toggledOn = true;
+				else
+				{
+					obj->_toggledOn = false;
+					obj->removeFromGameLayer();
+				}
+			}
+		}
+		if (_duration > 0.f && _offset != Vec2::ZERO)
+			_bgl->runMoveCommand(_duration, _offset, _easing, _easeRate, _targetGroupId, _lockToPlayerX, _lockToPlayerY);
 		break;
 	}
 }
@@ -297,37 +516,31 @@ void EffectGameObject::updateTweenAction(float value, std::string_view key)
 	if (!_bgl)
 		return;
 
+	auto setChannel = [&](int id, auto&& fn) {
+		auto it = _bgl->_colorChannels.find(id);
+		if (it != _bgl->_colorChannels.end())
+			fn(it->second);
+	};
+
 	if (key == "col1")
-	{
-		_bgl->_colorChannels.at(_targetColorId)._color.r = static_cast<uint8_t>(value);
-	}
+		setChannel(_targetColorId, [&](SpriteColor& c) { c._color.r = static_cast<uint8_t>(value); });
 	else if (key == "col2")
-	{
-		_bgl->_colorChannels.at(_targetColorId)._color.g = static_cast<uint8_t>(value);
-	}
+		setChannel(_targetColorId, [&](SpriteColor& c) { c._color.g = static_cast<uint8_t>(value); });
 	else if (key == "col3")
-	{
-		_bgl->_colorChannels.at(_targetColorId)._color.b = static_cast<uint8_t>(value);
-	}
+		setChannel(_targetColorId, [&](SpriteColor& c) { c._color.b = static_cast<uint8_t>(value); });
 	else if (key == "col4")
-	{
-		_bgl->_colorChannels.at(_targetColorId)._opacity = value;
-	}
+		setChannel(_targetColorId, [&](SpriteColor& c) { c._opacity = value; });
 	else if (key == "pul1")
-	{
-		_bgl->_colorChannels.at(_targetGroupId)._color.r = static_cast<uint8_t>(value);
-	}
+		setChannel(_targetGroupId, [&](SpriteColor& c) { c._color.r = static_cast<uint8_t>(value); });
 	else if (key == "pul2")
-	{
-		_bgl->_colorChannels.at(_targetGroupId)._color.g = static_cast<uint8_t>(value);
-	}
+		setChannel(_targetGroupId, [&](SpriteColor& c) { c._color.g = static_cast<uint8_t>(value); });
 	else if (key == "pul3")
-	{
-		_bgl->_colorChannels.at(_targetGroupId)._color.b = static_cast<uint8_t>(value);
-	}
+		setChannel(_targetGroupId, [&](SpriteColor& c) { c._color.b = static_cast<uint8_t>(value); });
 	else if (key == "fade")
 	{
-		_bgl->_groups[_targetGroupId]._alpha = static_cast<uint8_t>(value);
+		auto it = _bgl->_groups.find(_targetGroupId);
+		if (it != _bgl->_groups.end())
+			it->second._alpha = value;
 	}
 }
 
@@ -338,7 +551,8 @@ EffectGameObject* EffectGameObject::create(std::string_view frame)
 	if (pRet && pRet->init(frame))
 	{
 		pRet->_bgl = BaseGameLayer::getInstance();
-		// pRet->setVisible(false);
+		pRet->setVisible(false);
+		pRet->setOpacity(0);
 		pRet->autorelease();
 		return pRet;
 	}

@@ -30,6 +30,7 @@
 #include "2d/Menu.h"
 #include "network/HttpResponse.h"
 #include "GJGameLevel.h"
+#include "GameManager.h"
 #include "LoadingCircle.h"
 #include "EventDispatcher.h"
 #include "MenuItemSpriteExtra.h"
@@ -73,6 +74,8 @@ bool LevelInfoLayer::init(GJGameLevel* level)
 	const auto& winSize = Director::getInstance()->getWinSize();
 
 	_level = level;
+	if (auto* gm = GameManager::getInstance())
+		gm->applySavedProgress(_level);
 
 	GameToolbox::createBG(this);
 	GameToolbox::createCorners(this, false, false, true, true);
@@ -220,7 +223,7 @@ bool LevelInfoLayer::init(GJGameLevel* level)
 
 	auto practiceProgress = ax::Sprite::create(GameToolbox::getTextureString("GJ_progressBar_001.png"));
 	practiceProgress->setPosition({1.36f, 10});
-	practiceProgress->setColor({0, 255, 0});
+	practiceProgress->setColor({0, 255, 255});
 	practiceProgress->setOpacity(255);
 	practiceProgress->setAnchorPoint({0, 0.5});
 	practiceProgress->setTextureRect(
@@ -315,9 +318,12 @@ bool LevelInfoLayer::init(GJGameLevel* level)
 	std::string postData = fmt::format("levelID={}&secret=Wmfd2893gb7", level->_levelID);
 	
 	_request = new ax::network::HttpRequest();
-	_request->setUrl("http://www.boomlings.com/database/downloadGJLevel22.php");
+	_request->setUrl("https://www.boomlings.com/database/downloadGJLevel22.php");
 	_request->setRequestType(ax::network::HttpRequest::Type::POST);
-	_request->setHeaders(std::vector<std::string>{"User-Agent: "});
+	_request->setHeaders(std::vector<std::string>{
+		"User-Agent: ",
+		"Content-Type: application/x-www-form-urlencoded"
+	});
 	_request->setRequestData(postData.c_str(), postData.length());
 	_request->setResponseCallback(AX_CALLBACK_2(LevelInfoLayer::onHttpRequestCompleted, this));
 	_request->setTag("valid");

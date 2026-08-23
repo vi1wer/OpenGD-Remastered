@@ -85,7 +85,7 @@ void GroundLayer::update(float dt)
 {
 	if (auto pl = BaseGameLayer::getInstance())
 	{
-		if (pl->_colorChannels.contains(1001)) _sprite->setColor(pl->_colorChannels.at(1001)._color);
+		if (pl->_colorChannels.contains(1001)) _sprite->setColor(pl->colorForChannel(1001));
 	}
 
 	this->_sprite->setPositionX(this->_sprite->getPositionX() - dt * this->m_fSpeed);

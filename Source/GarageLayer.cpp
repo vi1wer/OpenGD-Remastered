@@ -17,6 +17,7 @@
 *************************************************************************/
 
 #include "GarageLayer.h"
+#include "GJShopLayer.h"
 #include "MenuItemSpriteExtra.h"
 #include "MenuLayer.h"
 #include "SimplePlayer.h"
@@ -24,6 +25,7 @@
 #include "ui/UITextField.h"
 #include "2d/Transition.h"
 #include "2d/Menu.h"
+#include "2d/Label.h"
 #include "EventDispatcher.h"
 #include "UTF8.h"
 #include "EventListenerKeyboard.h"
@@ -33,16 +35,19 @@
 #include "GameToolbox/log.h"
 #include "GameToolbox/conv.h"
 #include "GameToolbox/nodes.h"
+#include <algorithm>
+#include <string>
+#include <string_view>
 
 USING_NS_AX;
 
 Scene* GarageLayer::scene(bool popSceneWithTransition)
 {
-	auto s = Scene::create();
 	auto garage = GarageLayer::create();
+	if (!garage)
+		return Scene::create();
 	garage->_popSceneWithTransition = popSceneWithTransition;
-	s->addChild(garage);
-	return s;
+	return garage;
 }
 
 GarageLayer* GarageLayer::create()
@@ -87,13 +92,11 @@ bool GarageLayer::init()
 	this->addChild(line);
 
 	_iconPrev = SimplePlayer::create(0); // 132
+	_iconPrev->setPlayIdleAnimation(true);
 	_iconPrev->updateGamemode(gm->getSelectedIcon(gm->_mainSelectedMode), gm->_mainSelectedMode);
-	_iconPrev->setPosition({line->getPositionX(), line->getPositionY() + 25});
-	_iconPrev->setMainColor({125, 0, 255});
-	_iconPrev->setSecondaryColor({0, 255, 255});
-	_iconPrev->setGlow(true);
-	_iconPrev->setGlowColor({0, 255, 0});
-	_iconPrev->setScale(1.6f);
+	_previewCenter = {line->getPositionX(), line->getPositionY() + 25.f};
+	centerPreviewIcon();
+	applyPreviewColors();
 	this->addChild(_iconPrev);
 
 	this->setupIconSelect();
@@ -113,24 +116,19 @@ bool GarageLayer::init()
 	//backBtn->setSizeMult(1.6f);
 	menu->addChild(backBtn);
 
-	auto shop = MenuItemSpriteExtra::create("shopRope_001.png", [&](Node*) {
-		_iconPrev->updateGamemode(35, IconType::kIconTypeUfo);
+	auto shop = MenuItemSpriteExtra::create("shopRope_001.png", [](Node*) {
+		Director::getInstance()->pushScene(TransitionMoveInT::create(0.5f, GJShopLayer::scene()));
 	});
 
 	shop->setPosition({135, size.height - 25});
 	shop->setDestination({0, -15});
 	menu->addChild(shop);
 
-	auto shard = MenuItemSpriteExtra::create("GJ_shardsBtn_001.png", [&](Node*) {
-
+	auto paint = MenuItemSpriteExtra::create("GJ_paintBtn_001.png", [this](Node*) {
+		_colorMode = !_colorMode;
+		refreshCurrentPage();
 	});
-	shard->setPosition({30, size.height - 80});
-	menu->addChild(shard);
-
-	auto paint = MenuItemSpriteExtra::create("GJ_shardsBtn_001.png", [&](Node*) {
-
-	});
-	paint->setPosition({30, size.height - 120});
+	paint->setPosition({30, size.height - 80});
 	menu->addChild(paint);
 
 	
@@ -159,11 +157,65 @@ bool GarageLayer::init()
 int GarageLayer::selectedGameModeInt()
 {
 	if (_selectedMode == IconType::kIconTypeSpecial)
-		return 7;
+		return 9;
 	if (_selectedMode == IconType::kIconTypeDeathEffect)
-		return 8;
-
+		return 10;
 	return static_cast<int>(_selectedMode);
+}
+
+int GarageLayer::pageForSelectedIcon(IconType mode)
+{
+	int selected = GameManager::getInstance()->getSelectedIcon(mode);
+	int maxIcon = GameToolbox::getValueForGamemode(mode);
+	if (maxIcon < 1)
+		return 0;
+	if (selected < 1)
+		selected = 1;
+	if (selected > maxIcon)
+		selected = maxIcon;
+	return (selected - 1) / 36;
+}
+
+void GarageLayer::updateModeTabs()
+{
+	if (!_modeTabMenu)
+		return;
+
+	const int active = selectedGameModeInt();
+	for (auto* child : _modeTabMenu->getChildren())
+	{
+		auto* item = dynamic_cast<MenuItemSpriteExtra*>(child);
+		if (!item)
+			continue;
+		item->setSpriteFrame(getSpriteName(item->getTag(), item->getTag() == active));
+	}
+}
+
+void GarageLayer::selectMode(IconType mode, bool jumpToSelectedPage)
+{
+	_selectedMode = mode;
+	auto* gm = GameManager::getInstance();
+	gm->_mainSelectedMode = mode;
+
+	int iconId = gm->getSelectedIcon(mode);
+	if (iconId < 1)
+		iconId = 1;
+
+	_iconPrev->updateGamemode(iconId, mode);
+	const bool animatedMode = mode == IconType::kIconTypeRobot || mode == IconType::kIconTypeSpider;
+	_iconPrev->setPlayIdleAnimation(!animatedMode);
+	applyPreviewColors();
+	centerPreviewIcon();
+	updateModeTabs();
+
+	const int tab = selectedGameModeInt();
+	if (jumpToSelectedPage)
+		_modePages[tab] = pageForSelectedIcon(mode);
+
+	if (_colorMode)
+		setupColorPage();
+	else
+		setupPage(mode, _modePages[tab]);
 }
 
 void GarageLayer::createStat(const char* sprite, const char* statKey)
@@ -175,13 +227,36 @@ void GarageLayer::createStat(const char* sprite, const char* statKey)
 	stat->setPosition({size.width - 20, size.height - 14 - 20 * _stats});
 	this->addChild(stat);
 
-	auto statL = Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"), "0"); // GameStatsManager::sharedState()->getStat(statKey)
+	auto gm = GameManager::getInstance();
+	std::string value = "0";
+	if (statKey && std::string_view(statKey) == "14")
+		value = std::to_string(gm->getOrbs());
+	else if (statKey && std::string_view(statKey) == "13")
+		value = std::to_string(gm->getDiamonds());
+
+	auto statL = Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"), value);
 	statL->setScale(.45);
 	statL->setAnchorPoint({1, 0});
 	statL->setPosition({stat->getPositionX() - 16, stat->getPositionY() - 7});
 	this->addChild(statL);
 
+	if (statKey && std::string_view(statKey) == "14")
+		_orbStatLabel = statL;
+	else if (statKey && std::string_view(statKey) == "13")
+		_diamondStatLabel = statL;
+
 	_stats++;
+}
+
+void GarageLayer::onEnter()
+{
+	Scene::onEnter();
+	auto gm = GameManager::getInstance();
+	if (_orbStatLabel)
+		_orbStatLabel->setString(std::to_string(gm->getOrbs()));
+	if (_diamondStatLabel)
+		_diamondStatLabel->setString(std::to_string(gm->getDiamonds()));
+	refreshCurrentPage();
 }
 
 void GarageLayer::setupIconSelect()
@@ -197,39 +272,34 @@ void GarageLayer::setupIconSelect()
 	auto unlock = Sprite::createWithSpriteFrameName("GJ_unlockTxt_001.png");
 	unlock->setPosition({size.width / 2, bg->getPositionY() + bg->getContentSize().height / 2 + 12});
 	this->addChild(unlock);
+	_unlockLabel = unlock;
 
 	auto menu = Menu::create();
+	_modeTabMenu = menu;
 
-	for (int i = 0; i < 9; i++)
+	for (int i = 0; i < 11; i++)
 	{
 		auto s1 = Sprite::createWithSpriteFrameName(this->getSpriteName(i, false));
-		s1->setScale(.9f);
+		s1->setScale(.72f);
 		auto s2 = Sprite::createWithSpriteFrameName(this->getSpriteName(i, true));
 		s2->setScale(s1->getScale());
 
-		auto i1 = MenuItemSpriteExtra::create(s1, [&](Node* a)
+		auto i1 = MenuItemSpriteExtra::create(s1, [this](Node* a)
 		{
 			int tag = a->getTag();
-			int page = _modePages[tag];
 
 			IconType mode;
-			if (tag == 7)
+			if (tag == 9)
 				mode = IconType::kIconTypeSpecial;
-			else if (tag == 8)
+			else if (tag == 10)
 				mode = IconType::kIconTypeDeathEffect;
 			else
 				mode = static_cast<IconType>(tag);
 
-			this->setupPage(mode, page);
+			selectMode(mode, true);
 		});
 		i1->setTag(i);
 		menu->addChild(i1);
-
-		//auto i1 = MenuItemToggler::create(s1, s2, this, menu_selector(SaiGarageLayer::onSelectTab));
-		//i1->setSizeMult(1.2f);
-		//i1->setTag(i);
-		//i1->setClickable(false);
-		//menu->addChild(i1);
 	}
 
 	menu->alignItemsHorizontallyWithPadding(0);
@@ -237,6 +307,7 @@ void GarageLayer::setupIconSelect()
 	this->addChild(menu);
 
 	auto menuArr = Menu::create();
+	_pageArrowMenu = menuArr;
 	menuArr->setPosition({0, 0});
 
 	// Robtop aqui hace otra peruanada de usar "GJ_arrow_%02d_001.png" para las flechas etc...
@@ -244,38 +315,48 @@ void GarageLayer::setupIconSelect()
 	auto arrow1 = Sprite::createWithSpriteFrameName("GJ_arrow_01_001.png");
 	arrow1->setScale(.8f);
 
-	auto onChangePage = [this](bool up)
-	{
-		int gameMode = selectedGameModeInt();
-		GameToolbox::log("selected: {}, gameMode: {}", (int)this->_selectedMode, gameMode);
-		int page = this->_modePages[gameMode];
-		int maxpage = GameToolbox::getValueForGamemode(_selectedMode) / 36;
+	auto changePage = [this](bool next) {
+		if (_colorMode)
+		{
+			constexpr int kPerPage = 36;
+			const int maxPage = (GameToolbox::colorForIdxCount() - 1) / kPerPage;
+			if ((!next && _colorPage <= 0) || (next && _colorPage >= maxPage))
+				return;
+			_colorPage = next ? _colorPage + 1 : _colorPage - 1;
+			setupColorPage();
+			return;
+		}
 
-		if ((!up && page <= 0) || (up && page >= maxpage))
+		const int gameMode = selectedGameModeInt();
+		if (gameMode < 0 || gameMode >= static_cast<int>(_modePages.size()))
 			return;
 
-		if(up)
-			++_modePages[gameMode];
-		else
-			--_modePages[gameMode];
-		GameToolbox::log("page: {}, maxpage: {}, [] = {}", page, maxpage, _modePages[gameMode]);
+		int page = _modePages[gameMode];
+		const int maxIcon = GameToolbox::getValueForGamemode(_selectedMode);
+		if (maxIcon < 1)
+			return;
 
-		this->setupPage(_selectedMode, _modePages[gameMode]);
+		const int maxPage = (maxIcon - 1) / 36;
+		if ((!next && page <= 0) || (next && page >= maxPage))
+			return;
+
+		page = next ? page + 1 : page - 1;
+		_modePages[gameMode] = page;
+		setupPage(_selectedMode, page);
 	};
-	auto arrowLeftBtn = MenuItemSpriteExtra::create(arrow1, [&](Node*) {
-		onChangePage(false);
+
+	auto arrowLeftBtn = MenuItemSpriteExtra::create(arrow1, [changePage](Node*) {
+		changePage(false);
 	});
-	//arrBtn1->setSizeMult(2.2f);
 	arrowLeftBtn->setPosition({bg->getPositionX() - 220, bg->getPositionY()});
 	menuArr->addChild(arrowLeftBtn);
 
 	auto arrow2 = Sprite::createWithSpriteFrameName("GJ_arrow_01_001.png");
 	arrow2->setScale(.8f);
 	arrow2->setFlippedX(true);
-	auto arrowRightBtn = MenuItemSpriteExtra::create(arrow2, [&](Node*) {
-		onChangePage(true);
+	auto arrowRightBtn = MenuItemSpriteExtra::create(arrow2, [changePage](Node*) {
+		changePage(true);
 	});
-	//arrBtn2->setSizeMult(2.2f);
 	arrowRightBtn->setPosition({bg->getPositionX() + 220, bg->getPositionY()});
 	menuArr->addChild(arrowRightBtn);
 
@@ -285,19 +366,7 @@ void GarageLayer::setupIconSelect()
 	_selectSprite->setScale(.9f);
 	this->addChild(_selectSprite, 10);
 
-
-	auto gm = GameManager::getInstance();
-	int page = -1;
-	int selected = gm->getSelectedIcon(gm->_mainSelectedMode);
-
-	//find out on what page the selected id is
-	for (int i = 0; page == -1; i++) {
-		int max = 36 * (i + 1);
-		if (selected >= i * 36 && selected <= max)
-			page = i;
-	}
-	_modePages[selectedGameModeInt()] = page;
-	this->setupPage(gm->_mainSelectedMode, page);
+	selectMode(GameManager::getInstance()->_mainSelectedMode, true);
 }
 
 const char* GarageLayer::getSpriteName(int id, bool actived)
@@ -311,14 +380,27 @@ const char* GarageLayer::getSpriteName(int id, bool actived)
 		case 4: return actived ? "gj_dartBtn_on_001.png" : "gj_dartBtn_off_001.png";
 		case 5: return actived ? "gj_robotBtn_on_001.png" : "gj_robotBtn_off_001.png";
 		case 6: return actived ? "gj_spiderBtn_on_001.png" : "gj_spiderBtn_off_001.png";
-		case 7: return actived ? "gj_streakBtn_on_001.png" : "gj_streakBtn_off_001.png";
-		case 8: return actived ? "gj_explosionBtn_on_001.png" : "gj_explosionBtn_off_001.png";
+		case 7: return actived ? "gj_swingBtn_on_001.png" : "gj_swingBtn_off_001.png";
+		case 8: return actived ? "gj_jetpackBtn_on_001.png" : "gj_jetpackBtn_off_001.png";
+		case 9: return actived ? "gj_streakBtn_on_001.png" : "gj_streakBtn_off_001.png";
+		case 10: return actived ? "gj_explosionBtn_on_001.png" : "gj_explosionBtn_off_001.png";
 	}
-	return nullptr;
+	return "gj_iconBtn_off_001.png";
 }
 
 void GarageLayer::setupPage(IconType type, int page)
 {
+	_colorMode = false;
+	if (_unlockLabel)
+		_unlockLabel->setVisible(true);
+	if (_pageArrowMenu)
+		_pageArrowMenu->setVisible(true);
+	if (_colorUiLayer)
+	{
+		_colorUiLayer->removeFromParent();
+		_colorUiLayer = nullptr;
+	}
+
 	if (_selectSprite != nullptr)
 		GameToolbox::log("posx: {}, posy {}", _selectSprite->getPositionX(), _selectSprite->getPositionY());
 	GameToolbox::log("page: {}", page);
@@ -327,107 +409,245 @@ void GarageLayer::setupPage(IconType type, int page)
 	auto size = Director::getInstance()->getWinSize();
 
 	if (_menuIcons)
-		this->removeChild(_menuIcons);
+	{
+		_menuIcons->removeFromParent();
+		_menuIcons = nullptr;
+	}
 
 	_menuIcons = Menu::create();
 	_menuIcons->setPosition(0, 0);
 
-	float paddingX = 0, paddingY = 0;
+	if (page < 0)
+		page = 0;
 
-	//loop vars
-	int i = page * 36;
-	i++;
-	int max = std::clamp((page + 1) * 36, i, GameToolbox::getValueForGamemode(_selectedMode));
-	int selectedForGameMode = GameManager::getInstance()->getSelectedIcon(_selectedMode);
-	GameToolbox::log("selectedForGameMode: {}", selectedForGameMode);
-
-	if (_selectSprite != nullptr)
-		_selectSprite->setVisible(false);
-	GameToolbox::log("i: {}, max: {}", i, max);
-	for (;i <= max; i++)
+	int maxIcon = GameToolbox::getValueForGamemode(type);
+	if (maxIcon < 1)
 	{
-		if (i > GameToolbox::getValueForGamemode(type))
-			break;
-		GameToolbox::log("i: {}", i);
+		this->addChild(_menuIcons);
+		return;
+	}
+
+	const int maxPage = (maxIcon - 1) / 36;
+	if (page > maxPage)
+		page = maxPage;
+
+	int i = page * 36 + 1;
+	int max = std::min((page + 1) * 36, maxIcon);
+	int selectedForGameMode = GameManager::getInstance()->getSelectedIcon(type);
+	if (selectedForGameMode < 1)
+		selectedForGameMode = 1;
+	auto gm = GameManager::getInstance();
+
+	if (_selectSprite)
+		_selectSprite->setVisible(false);
+
+	for (; i <= max; i++)
+	{
 		auto browserItem = Sprite::createWithSpriteFrameName("playerSquare_001.png");
+		if (!browserItem)
+			continue;
+		browserItem->setStretchEnabled(false);
 		browserItem->setOpacity(0);
 
 		if (type == IconType::kIconTypeSpecial)
 		{
 			auto icono = Sprite::createWithSpriteFrameName(StringUtils::format("player_special_%02d_001.png", i));
+			if (!icono)
+				continue;
+			icono->setColor({170, 170, 170});
+			icono->setAnchorPoint({0.5f, 0.5f});
 			icono->setPosition(browserItem->getContentSize() / 2);
-			icono->setScale(27.0f / icono->getContentSize().width);
+			const float w = std::max(icono->getContentSize().width, 1.f);
+			const float h = std::max(icono->getContentSize().height, 1.f);
+			icono->setScale(26.f / std::max(w, h));
 			browserItem->addChild(icono);
 		}
 		else if (type == IconType::kIconTypeDeathEffect)
 		{
 			auto icono = Sprite::createWithSpriteFrameName(StringUtils::format("explosionIcon_%02d_001.png", i));
+			if (!icono)
+				continue;
+			icono->setColor({170, 170, 170});
+			icono->setAnchorPoint({0.5f, 0.5f});
 			icono->setPosition(browserItem->getContentSize() / 2);
-			icono->setScale(0.9f);
+			const float w = std::max(icono->getContentSize().width, 1.f);
+			const float h = std::max(icono->getContentSize().height, 1.f);
+			icono->setScale(26.f / std::max(w, h));
 			browserItem->addChild(icono);
-		} 
+		}
 		else
 		{
 			auto icono = SimplePlayer::create(0);
+			if (!icono)
+				continue;
 			icono->updateGamemode(i, type);
-			icono->setMainColor({175, 175, 175});
-			icono->setPosition(browserItem->getContentSize() / 2);
 			if (type == IconType::kIconTypeUfo)
 			{
-				icono->setPositionY(icono->getPositionY() + 5);
-				icono->m_pDomeSprite->setVisible(false);
+				if (icono->m_pDomeSprite)
+					icono->m_pDomeSprite->setVisible(false);
 			}
-			icono->setScale(27.0f / icono->m_pMainSprite->getContentSize().width);
+			icono->applyGarageStyle(26.f);
+			icono->placeCenteredAt(browserItem->getContentSize() / 2);
 			browserItem->addChild(icono);
 		}
-		
-		// if (!gm->isIconUnlocked(i, type))
-		// {
-			// auto icon = reinterpret_cast<Sprite*>(browserItem->getChildren()->objectAtIndex(0));
-			// icon->setOpacity(75);
 
-			// const char* name = "GJ_lock_001.png";
-			// float scale	  = .75f;  // 2147483648, 4294967295
+		const bool unlocked = gm->isIconUnlocked(type, i);
+		if (!unlocked)
+			browserItem->setColor({70, 70, 70});
 
-			// if (GameStatsManager::sharedState()->getStoreItem(
-					// i, AchievementManager::sharedState()->convertIconTypeToUnlockType(type))) {
-				// name  = "storeItemIcon_001.png";
-				// scale = .9f;
-			// }
-
-			// auto lock = Sprite::createWithSpriteFrameName(name);
-			// lock->setScale(scale);
-			// lock->setPosition(browserItem->getContentSize() / 2);
-			// browserItem->addChild(lock);
-		// }
-
-		auto btn = MenuItemSpriteExtra::create(browserItem, [&](Node* a)
+		auto btn = MenuItemSpriteExtra::create(browserItem, [this](Node* a)
 		{
-			_iconPrev->updateGamemode(a->getTag(), _selectedMode);
-			GameToolbox::log("tag: {}", a->getTag());
+			if (!_iconPrev || !a)
+				return;
 			auto gm = GameManager::getInstance();
+			if (!gm->isIconUnlocked(_selectedMode, a->getTag()))
+				return;
+			_iconPrev->updateGamemode(a->getTag(), _selectedMode);
 			gm->setSelectedIcon(_selectedMode, a->getTag());
 			gm->_mainSelectedMode = _selectedMode;
-			_selectSprite->setPosition(a->getPosition());
-			_selectSprite->setVisible(true);
+			applyPreviewColors();
+			centerPreviewIcon();
+			gm->save();
+			if (_selectSprite)
+			{
+				_selectSprite->setPosition(a->getPosition());
+				_selectSprite->setVisible(true);
+			}
+			updateModeTabs();
 		});
 		btn->setTag(i);
-		btn->setPosition({size.width / 2 - 165 + paddingX, size.height / 2 - 65 + 30 - paddingY});
+		// Strict 12x3 cell grid (30px pitch) so icons never drift between modes.
+		const int slot = i - page * 36 - 1;
+		const int col = slot % _numPerRow;
+		const int row = slot / _numPerRow;
+		btn->setPosition({size.width / 2 - 165 + col * 30.f, size.height / 2 - 35 - row * 30.f});
 		_menuIcons->addChild(btn);
-		if (i == selectedForGameMode)
+		if (i == selectedForGameMode && _selectSprite)
 		{
-			_selectSprite->setPosition(_menuIcons->convertToNodeSpace(btn->getPosition()));
+			_selectSprite->setPosition(btn->getPosition());
 			_selectSprite->setVisible(true);
 		}
+	}
 
+	this->addChild(_menuIcons);
+}
 
-		if (i % _numPerRow == 0)
-		{
-			paddingX = 0;
-			paddingY += 30;
-		}
-		else
-			paddingX += 30;
+void GarageLayer::centerPreviewIcon()
+{
+	if (!_iconPrev)
+		return;
+
+	_iconPrev->setAnchorPoint({0.f, 0.f});
+	_iconPrev->setScale(1.f);
+	_iconPrev->fitToSize(42.f);
+	_iconPrev->placeCenteredAt(_previewCenter);
+}
+
+void GarageLayer::applyPreviewColors()
+{
+	auto gm = GameManager::getInstance();
+	_iconPrev->setMainColor(gm->getPlayerMainColor());
+	_iconPrev->setSecondaryColor(gm->getPlayerSecondaryColor());
+	_iconPrev->setGlow(gm->isPlayerGlowEnabled());
+	_iconPrev->setGlowColor(gm->getPlayerGlowColor());
+}
+
+void GarageLayer::refreshCurrentPage()
+{
+	if (_colorMode)
+		setupColorPage();
+	else
+		setupPage(_selectedMode, _modePages[selectedGameModeInt()]);
+}
+
+void GarageLayer::setupColorPage()
+{
+	_colorMode = true;
+	if (_unlockLabel)
+		_unlockLabel->setVisible(false);
+	if (_pageArrowMenu)
+		_pageArrowMenu->setVisible(true);
+	if (_colorUiLayer)
+	{
+		_colorUiLayer->removeFromParent();
+		_colorUiLayer = nullptr;
+	}
+	if (_selectSprite)
+		_selectSprite->setVisible(false);
+
+	_colorUiLayer = Node::create();
+	this->addChild(_colorUiLayer);
+
+	auto size = Director::getInstance()->getWinSize();
+	auto gm = GameManager::getInstance();
+
+	if (_menuIcons)
+	{
+		_menuIcons->removeFromParent();
+		_menuIcons = nullptr;
+	}
+
+	_menuIcons = Menu::create();
+	_menuIcons->setPosition(0, 0);
+
+	constexpr int kPerPage = 36;
+	const int totalColors = GameToolbox::colorForIdxCount();
+	const int maxPage = std::max(0, (totalColors - 1) / kPerPage);
+	_colorPage = std::clamp(_colorPage, 0, maxPage);
+	const int startIdx = _colorPage * kPerPage;
+	const int endIdx = std::min(startIdx + kPerPage, totalColors);
+
+	const char* slotLabels[] = {"1", "2", "G"};
+	for (int slot = 0; slot < 3; ++slot)
+	{
+		Color3B slotColor = slot == 0 ? gm->getPlayerMainColor()
+			: slot == 1 ? gm->getPlayerSecondaryColor()
+			: gm->getPlayerGlowColor();
+
+		auto slotBtn = Sprite::createWithSpriteFrameName("GJ_colorBtn_001.png");
+		slotBtn->setColor(slotColor);
+		slotBtn->setScale(0.55f);
+
+		auto slotItem = MenuItemSpriteExtra::create(slotBtn, [this, slot](Node*) {
+			_activeColorSlot = slot;
+		});
+		slotItem->setPosition({size.width / 2 - 165 + slot * 35.f, size.height / 2 - 65 + 58.f});
+		_menuIcons->addChild(slotItem);
+
+		auto slotLabel = Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"), slotLabels[slot]);
+		slotLabel->setScale(0.35f);
+		slotLabel->setPosition({size.width / 2 - 165 + slot * 35.f, size.height / 2 - 65 + 76.f});
+		_colorUiLayer->addChild(slotLabel);
+	}
+
+	for (int colorIndex = startIdx; colorIndex < endIdx; ++colorIndex)
+	{
+		const Color3B color = GameToolbox::colorForIdx(colorIndex);
+		auto swatch = Sprite::createWithSpriteFrameName("GJ_colorBtn_001.png");
+		swatch->setColor(color);
+		swatch->setScale(0.75f);
+
+		auto btn = MenuItemSpriteExtra::create(swatch, [this, color](Node*) {
+			auto gm = GameManager::getInstance();
+			switch (_activeColorSlot)
+			{
+			case 0: gm->setPlayerMainColor(color); break;
+			case 1: gm->setPlayerSecondaryColor(color); break;
+			default:
+				gm->setPlayerGlowColor(color);
+				gm->setPlayerGlowEnabled(true);
+				break;
+			}
+			applyPreviewColors();
+			gm->save();
+			setupColorPage();
+		});
+
+		const int slot = colorIndex - startIdx;
+		const int col = slot % _numPerRow;
+		const int row = slot / _numPerRow;
+		btn->setPosition({size.width / 2 - 165 + col * 30.f, size.height / 2 - 65 + 30 - row * 30.f});
+		_menuIcons->addChild(btn);
 	}
 
 	this->addChild(_menuIcons);

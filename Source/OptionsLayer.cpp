@@ -25,6 +25,10 @@
 #include "DropDownLayer.h"
 #include "AccountLoginLayer.h"
 #include "TutorialLayer.h"
+#include "SongsLayer.h"
+#include "RateLevelLayer.h"
+#include "AlertLayer.h"
+#include "Application.h"
 
 USING_NS_AX;
 
@@ -55,20 +59,21 @@ bool OptionsLayer::init()
 	
 	
 	auto optionsBtn = MenuItemSpriteExtra::create(ButtonSprite::create("Options"), [](Node*) {
-	//	GameManager::getInstance()->setQualityHigh();
+		auto alert = AlertLayer::create("Options", "Graphics quality can be changed from the loading screen.", "OK", nullptr, nullptr, nullptr);
+		alert->show();
 	});
 
 
 	auto rateBtn = MenuItemSpriteExtra::create(ButtonSprite::create("Rate"), [](Node*) {
-	//	GameManager::getInstance()->setQualityHigh();
+		RateLevelLayer::create(0)->show();
 	});
 	
 	auto songsBtn = MenuItemSpriteExtra::create(ButtonSprite::create("Songs"), [](Node*) {
-	//	GameManager::getInstance()->setQualityHigh();
+		SongsLayer::create()->showLayer(true, false);
 	});
 
 	auto helpBtn = MenuItemSpriteExtra::create(ButtonSprite::create("Help"), [](Node*) {
-	//	GameManager::getInstance()->setQualityHigh();
+		Application::getInstance()->openURL("http://www.robtopgames.com");
 	});
 
 	auto menu = Menu::create(accountBtn, howToPlayBtn, optionsBtn, rateBtn, songsBtn, helpBtn, nullptr);
@@ -87,6 +92,6 @@ bool OptionsLayer::init()
 	
 
 	auto dropdownlayer = DropDownLayer::create(scrollLayer, "Settings");
-	dropdownlayer->showLayer();
+	dropdownlayer->showLayer(true, false);
 	return true;
 }

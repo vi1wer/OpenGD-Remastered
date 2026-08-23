@@ -34,14 +34,45 @@ EffectManager* EffectManager::create()
 	}
 }
 
-void EffectManager::runMoveCommand(float duration, ax::Point offsetPos, int easeType, float easeAmt, int groupID)
+void EffectManager::runMoveCommand(float duration, ax::Point offsetPos, int easeType, float easeAmt, int groupID,
+								  bool lockToPlayerX, bool lockToPlayerY)
+{
+	GroupCommandObject* gco = GroupCommandObject::create();
+	if (!gco)
+		return;
+	gco->retain();
+	gco->_groupID = groupID;
+	gco->_followPlayerX = lockToPlayerX;
+	gco->_followPlayerY = lockToPlayerY;
+	gco->runMoveCommand(duration, offsetPos, easeType, easeAmt);
+	gco->_actionID = 0;
+	_groupActions.push_back(gco);
+}
+
+void EffectManager::runFollowCommand(float duration, int groupID, bool followX, bool followY)
 {
 	GroupCommandObject* gco = GroupCommandObject::create();
 	gco->retain();
 	gco->_groupID = groupID;
-	gco->runMoveCommand(duration, offsetPos, easeType, easeAmt);
+	gco->_duration = duration;
+	gco->_followPlayerX = followX;
+	gco->_followPlayerY = followY;
 	gco->_actionID = 0;
 	_groupActions.push_back(gco);
+}
+
+void EffectManager::stopGroupActions(int groupID)
+{
+	for (auto it = _groupActions.begin(); it != _groupActions.end();)
+	{
+		if (*it && (*it)->_groupID == groupID)
+		{
+			(*it)->_actionDone = true;
+			it = _groupActions.erase(it);
+		}
+		else
+			++it;
+	}
 }
 
 void EffectManager::prepareMoveActions(float dt, bool idk)
@@ -50,17 +81,21 @@ void EffectManager::prepareMoveActions(float dt, bool idk)
 	_activeMoveActions.clear();
 	for (auto commandObject : _groupActions)
 	{
-		if (commandObject->_actionID == 0)
+		if (commandObject && commandObject->_actionID == 0)
 		{
-			CCMoveNode* moveNode;
+			CCMoveNode* moveNode = nullptr;
 			if (!this->_activeMoveActions.contains(commandObject->_groupID))
 			{
 				moveNode = CCMoveNode::create();
+				if (!moveNode)
+					continue;
 				moveNode->retain();
 				this->_activeMoveActions[commandObject->_groupID] = moveNode;
 			}
-			if (!moveNode)
+			else
 				moveNode = this->_activeMoveActions[commandObject->_groupID];
+			if (!moveNode)
+				continue;
 
 			ax::Point unk, newPos;
 
@@ -96,10 +131,12 @@ void EffectManager::prepareMoveActions(float dt, bool idk)
 			}
 			else
 			{
-				moveNode->_newPosOptimized.x += newPos.x;
-				moveNode->_newPosOptimized.y += newPos.y;
+				moveNode->_newPosOptimized.x += commandObject->_newPos.x;
+				moveNode->_newPosOptimized.y += commandObject->_newPos.y;
 			}
 
+			commandObject->_newPos = ax::Point::ZERO;
+			commandObject->_unkPoint = ax::Point::ZERO;
 			commandObject->_delta1 = 0;
 
 			if(commandObject->_actionDoneForNextLoop)

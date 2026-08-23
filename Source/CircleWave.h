@@ -32,7 +32,6 @@ namespace ax
 
 class CircleWave : public ax::DrawNode, public ax::ActionTweenDelegate {
 private:
-	void draw(ax::Renderer *renderer, const ax::Mat4& transform, uint32_t flags) override;
 	virtual void updateTweenAction(float value, std::string_view key) override;
 	bool init(float duration, ax::Color4B color, float radiusMin, float radiusMax, bool easing, float lineWidth, bool filled);
 	void update(float dt) override;

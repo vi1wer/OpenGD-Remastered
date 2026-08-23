@@ -45,7 +45,11 @@ public:
 	float bgStartPos;
 	float sep;
 	float bsizeX;
-	
+	float _jumpTimer = 0.f;
+	// Same floor/ceiling as PlayLayer (camera Y = 0, cameraYCenter = 240).
+	float _groundY = 105.f;
+	float _ceilY = 255.f;
+	bool _pendingRelease = false;
 
 public:
 	void processPlayerMovement(float delta);
@@ -53,6 +57,12 @@ public:
 	void update(float delta);
 	void updateVisibility(float delta);
 	void resetPlayer(bool touched);
+	void pickRandomIcon();
+	void spawnMenuPlayer();
+	void tryJump(float delta);
+	void collideMenuWorld();
+	void spiderTeleportMenu();
+	void applyMenuBounds();
 	bool onTouchBegan(ax::Touch *touch, ax::Event *event);
 	void renderRect(ax::Rect rect, ax::Color4B col);
 

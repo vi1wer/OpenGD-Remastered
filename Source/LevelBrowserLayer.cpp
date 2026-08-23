@@ -107,7 +107,7 @@ bool LevelBrowserLayer::init(GJSearchObject* search)
 		if (!_searchObj->_difficulty.empty()) postData += fmt::format("&diff={}", _searchObj->_difficulty);
 		if (!_searchObj->_length.empty()) postData += fmt::format("&len={}", _searchObj->_length);
 		GameToolbox::executeHttpRequest(
-			"http://www.boomlings.com/database/getGJLevels21.php", postData, ax::network::HttpRequest::Type::POST,
+			"https://www.boomlings.com/database/getGJLevels21.php", postData, ax::network::HttpRequest::Type::POST,
 			AX_CALLBACK_2(LevelBrowserLayer::onHttpRequestCompleted, this));
 	});
 	_rightBtn->setPosition(pageMenu->convertToNodeSpace(ax::Vec2(winSize.width - 24, winSize.height / 2)));
@@ -132,7 +132,7 @@ bool LevelBrowserLayer::init(GJSearchObject* search)
 		if (!_searchObj->_difficulty.empty()) postData += fmt::format("&diff={}", _searchObj->_difficulty);
 		if (!_searchObj->_length.empty()) postData += fmt::format("&len={}", _searchObj->_length);
 		GameToolbox::executeHttpRequest(
-			"http://www.boomlings.com/database/getGJLevels21.php", postData, ax::network::HttpRequest::Type::POST,
+			"https://www.boomlings.com/database/getGJLevels21.php", postData, ax::network::HttpRequest::Type::POST,
 			AX_CALLBACK_2(LevelBrowserLayer::onHttpRequestCompleted, this));
 	});
 	_leftBtn->setEnabled(false);
@@ -183,7 +183,7 @@ bool LevelBrowserLayer::init(GJSearchObject* search)
 	if (!_searchObj->_difficulty.empty()) postData += fmt::format("&diff={}", _searchObj->_difficulty);
 	if (!_searchObj->_length.empty()) postData += fmt::format("&len={}", _searchObj->_length);
 	GameToolbox::executeHttpRequest(
-		"http://www.boomlings.com/database/getGJLevels21.php", postData, ax::network::HttpRequest::Type::POST,
+		"https://www.boomlings.com/database/getGJLevels21.php", postData, ax::network::HttpRequest::Type::POST,
 		AX_CALLBACK_2(LevelBrowserLayer::onHttpRequestCompleted, this));
 
 	return true;

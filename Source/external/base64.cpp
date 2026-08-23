@@ -8,7 +8,7 @@ static const std::string base64_chars =
 
 
 static inline bool is_base64(BYTE c) {
-  return (isalnum(c) || (c == '+') || (c == '/'));
+  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '/';
 }
 
 std::string base64_encode(BYTE const* buf, unsigned int bufLen) 

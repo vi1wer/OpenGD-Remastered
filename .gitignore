@@ -63,3 +63,14 @@ CMakeCache.txt
 # clion
 cmake-build-*
 .idea
+# Local engine / build outputs / logs (not shipped in the repo)
+/axmol/
+/release/
+*.log
+crash_stderr.txt
+crash_stdout.txt
+opengd_err.txt
+opengd_out.txt
+opengd_run.log
+/tools/
+.vscode/

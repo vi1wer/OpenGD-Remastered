@@ -30,11 +30,12 @@ class LevelPage : public ax::Layer
 {
 	
 public:
-	GJGameLevel* _level;
+	GJGameLevel* _level = nullptr;
 	bool _openBGL = false;
 	static bool replacingScene;
 	bool init(GJGameLevel* level);
 	static LevelPage* create(GJGameLevel* level);
+	~LevelPage() override;
 
 	void onPlay(ax::Node*);
 };

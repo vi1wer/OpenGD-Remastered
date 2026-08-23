@@ -17,11 +17,25 @@
 *************************************************************************/
 
 #include "GJGameLevel.h"
+#include "GameManager.h"
 #include "GameToolbox/conv.h"
+#include "GameToolbox/log.h"
 
 #include "external/base64.h"
+#include "external/json.hpp"
+#include "platform/FileUtils.h"
 
 #include <ZipUtils.h>
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <iterator>
+#include <unordered_map>
+#include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif>
 
 //the only thing we actually want as normal string is the class members
 static inline std::string _toString(std::string_view s) {
@@ -86,6 +100,9 @@ GJGameLevel* GJGameLevel::createWithResponse(std::string_view backendResponse)
 	if (levelResponse.contains("45")) level->_objects = GameToolbox::stoi(levelResponse["45"]);
 	if (levelResponse.contains("46")) level->_editorTime = GameToolbox::stoi(levelResponse["46"]);
 	if (levelResponse.contains("47")) level->_editorTimeTotal = GameToolbox::stoi(levelResponse["47"]);
+
+	if (auto* gm = GameManager::getInstance())
+		gm->applySavedProgress(level);
 	
 	return level;
 }
@@ -107,27 +124,200 @@ GJGameLevel* GJGameLevel::createWithMinimumData(std::string levelName, std::stri
 	level->_levelName = levelName;
 	level->_levelID = levelID;
 	level->_levelCreator = levelCreator;
+	if (levelID > 0)
+		level->_musicID = levelID - 1;
+	if (auto* gm = GameManager::getInstance())
+		gm->applySavedProgress(level);
 
 	return level;
 }
 
+namespace
+{
+std::string trimCopy(std::string s)
+{
+	s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char c) { return !std::isspace(c); }));
+	s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char c) { return !std::isspace(c); }).base(), s.end());
+	return s;
+}
+
+std::string readAllBytes(const std::string& path)
+{
+	if (path.empty())
+		return {};
+
+	auto* fu = ax::FileUtils::getInstance();
+	if (fu)
+	{
+		std::string viaUtils = fu->getStringFromFile(path);
+		if (!viaUtils.empty())
+			return viaUtils;
+	}
+
+	std::ifstream in(path, std::ios::binary);
+	if (!in)
+		return {};
+	return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+std::string exeDirectory()
+{
+#ifdef _WIN32
+	wchar_t path[MAX_PATH] = {0};
+	if (GetModuleFileNameW(nullptr, path, MAX_PATH) == 0)
+		return {};
+	std::wstring wpath(path);
+	const auto slash = wpath.find_last_of(L"\\/");
+	if (slash == std::wstring::npos)
+		return {};
+	return {wpath.begin(), wpath.begin() + static_cast<std::ptrdiff_t>(slash)};
+#else
+	return {};
+#endif
+}
+
+std::string packedLevelFromJson(int gdLevelID)
+{
+	static nlohmann::json s_mainLevels;
+	static bool s_tried = false;
+	if (!s_tried)
+	{
+		s_tried = true;
+		const std::string exe = exeDirectory();
+		const std::vector<std::string> jsonPaths = {
+			"Custom/mainLevels.json",
+			exe.empty() ? std::string() : exe + "\\Content\\Custom\\mainLevels.json",
+			exe.empty() ? std::string() : exe + "\\Custom\\mainLevels.json",
+			"D:\\OpenGDRemastered\\Content\\Custom\\mainLevels.json",
+		};
+
+		std::string text;
+		for (const auto& p : jsonPaths)
+		{
+			text = readAllBytes(p);
+			if (!text.empty())
+			{
+				GameToolbox::log("mainLevels.json from {}", p);
+				break;
+			}
+		}
+
+		if (!text.empty())
+		{
+			s_mainLevels = nlohmann::json::parse(text, nullptr, false);
+			if (s_mainLevels.is_discarded())
+			{
+				GameToolbox::log("mainLevels.json parse failed ({} bytes)", text.size());
+				s_mainLevels = nlohmann::json::object();
+			}
+		}
+		else
+		{
+			GameToolbox::log("mainLevels.json not found on any search path");
+		}
+	}
+
+	const std::string key = std::to_string(gdLevelID);
+	if (!s_mainLevels.contains(key) || !s_mainLevels[key].is_string())
+		return {};
+	return s_mainLevels[key].get<std::string>();
+}
+
+std::string packedLevelFromTxt(int gdLevelID)
+{
+	const std::string exe = exeDirectory();
+	const std::string name = std::to_string(gdLevelID) + ".txt";
+	const std::vector<std::string> paths = {
+		"levels/" + name,
+		"Resources/levels/" + name,
+		exe.empty() ? std::string() : exe + "\\Content\\levels\\" + name,
+		exe.empty() ? std::string() : exe + "\\Resources\\levels\\" + name,
+		exe.empty() ? std::string() : exe + "\\levels\\" + name,
+		"D:\\OpenGDRemastered\\Content\\levels\\" + name,
+		"D:\\GeometryDash 2.2081\\Resources\\levels\\" + name,
+	};
+
+	for (const auto& path : paths)
+	{
+		std::string packed = trimCopy(readAllBytes(path));
+		if (!packed.empty())
+		{
+			GameToolbox::log("Loaded official level {} from {}", gdLevelID, path);
+			return packed;
+		}
+	}
+	return {};
+}
+
+std::string decodePackedLevel(std::string packed)
+{
+	packed = trimCopy(std::move(packed));
+	if (packed.empty())
+		return {};
+	if (packed.front() == 'k')
+		return packed;
+	if (packed.rfind("H4sI", 0) != 0)
+		packed.insert(0, "H4sIAAAAAAAAA");
+	return GJGameLevel::decompressLvlStr(packed);
+}
+}
+
+std::string GJGameLevel::getLevelStrFromID(int gdLevelID)
+{
+	static std::unordered_map<int, std::string> s_cache;
+	if (auto it = s_cache.find(gdLevelID); it != s_cache.end())
+		return it->second;
+
+	std::string levelString = decodePackedLevel(packedLevelFromTxt(gdLevelID));
+	if (levelString.empty())
+		levelString = decodePackedLevel(packedLevelFromJson(gdLevelID));
+
+	if (levelString.empty() || levelString.front() != 'k')
+	{
+		GameToolbox::log("Official level {} failed to load (decoded {} bytes)", gdLevelID, levelString.size());
+		return {};
+	}
+
+	GameToolbox::log("Official level {} decoded ({} bytes)", gdLevelID, levelString.size());
+	s_cache.emplace(gdLevelID, levelString);
+	return levelString;
+}
+
 std::string GJGameLevel::decompressLvlStr(std::string compressedLvlStr)
 {
-	if (compressedLvlStr.empty()) return "";
+	if (compressedLvlStr.empty())
+		return "";
 
 	std::replace(compressedLvlStr.begin(), compressedLvlStr.end(), '_', '/');
 	std::replace(compressedLvlStr.begin(), compressedLvlStr.end(), '-', '+');
 
-	std::string decoded = base64_decode(compressedLvlStr);
+	std::string cleaned;
+	cleaned.reserve(compressedLvlStr.size());
+	for (unsigned char c : compressedLvlStr)
+	{
+		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=')
+			cleaned.push_back(static_cast<char>(c));
+	}
+	while (cleaned.size() % 4 != 0)
+		cleaned.push_back('=');
 
-	unsigned char* data = (unsigned char*)decoded.data();
+	std::string decoded = base64_decode(cleaned);
+	if (decoded.empty())
+		return "";
+
+	unsigned char* data = reinterpret_cast<unsigned char*>(decoded.data());
 	unsigned char* a = nullptr;
-	ssize_t deflatedLen = ax::ZipUtils::inflateMemory(data, decoded.length(), &a);
+	ssize_t deflatedLen = ax::ZipUtils::inflateMemory(data, static_cast<ssize_t>(decoded.size()), &a);
 
-	std::string levelString = (char *)a;
+	if (!a || deflatedLen <= 0)
+	{
+		if (a)
+			free(a);
+		return "";
+	}
 
+	std::string levelString(reinterpret_cast<char*>(a), static_cast<size_t>(deflatedLen));
 	free(a);
-
 	return levelString;
 }
 
@@ -155,15 +345,20 @@ std::string GJGameLevel::getDifficultySprite(GJGameLevel* level, DifficultyType 
 	{
 		switch (level->_demonDifficulty) {
 		case 3:
+			if (type == kMainLevels) return "diffIcon_07_btn_001.png";
 			return type == kLevelInfoLayer ? "difficulty_07_btn2_001.png" : "difficulty_07_btn_001.png";
 		case 4:
+			if (type == kMainLevels) return "diffIcon_08_btn_001.png";
 			return type == kLevelInfoLayer ? "difficulty_08_btn2_001.png" : "difficulty_08_btn_001.png";
 		case 5:
+			if (type == kMainLevels) return "diffIcon_09_btn_001.png";
 			return type == kLevelInfoLayer ? "difficulty_09_btn2_001.png" : "difficulty_09_btn_001.png";
 		case 6:
+			if (type == kMainLevels) return "diffIcon_10_btn_001.png";
 			return type == kLevelInfoLayer ? "difficulty_10_btn2_001.png" : "difficulty_10_btn_001.png";
 		default:
 		case 0:
+			if (type == kMainLevels) return "diffIcon_06_btn_001.png";
 			return type == kLevelInfoLayer ? "difficulty_06_btn2_001.png" : "difficulty_06_btn_001.png";
 		}
 	}

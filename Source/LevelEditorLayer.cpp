@@ -35,6 +35,8 @@
 #include "MenuItemSpriteExtra.h"
 
 #include "2d/Menu.h"
+#include "base/EventListenerMouse.h"
+#include "base/EventMouse.h"
 
 #include "GJGameLevel.h"
 
@@ -82,6 +84,8 @@ void LevelEditorLayer::updateCamera(float dt) {
 	m_obCamPos += cam2;
 
 	auto winSize = ax::Director::getInstance()->getWinSize();
+	const float maxCamX = std::max(0.f, m_lastObjXPos - winSize.width * 0.35f);
+	m_obCamPos.x = ax::clampf(m_obCamPos.x, 0.f, maxCamX);
 	ax::Vec2 cam = m_obCamPos;
 
 	cam.y = ax::clampf(cam.y, 0.0f, 1140.f - winSize.height);
@@ -146,6 +150,43 @@ void LevelEditorLayer::onEnter() {
 	listener->onKeyPressed = AX_CALLBACK_2(LevelEditorLayer::onKeyPressed, this);
 	listener->onKeyReleased = AX_CALLBACK_2(LevelEditorLayer::onKeyReleased, this);
 	dir->getEventDispatcher()->addEventListenerWithSceneGraphPriority(listener, this);
+
+	auto mouse = ax::EventListenerMouse::create();
+	mouse->onMouseScroll = [this](ax::Event* event) {
+		if (_inPlaybackMode)
+			return;
+		auto* mouseEvent = static_cast<ax::EventMouse*>(event);
+		m_obCamPos.x -= mouseEvent->getScrollY() * 40.f;
+	};
+	mouse->onMouseDown = [this](ax::Event* event) {
+		if (_inPlaybackMode)
+			return;
+		auto* mouseEvent = static_cast<ax::EventMouse*>(event);
+		const auto button = mouseEvent->getMouseButton();
+		if (button == ax::EventMouse::MouseButton::BUTTON_RIGHT
+			|| button == ax::EventMouse::MouseButton::BUTTON_MIDDLE)
+		{
+			_cameraPanning = true;
+			_panTouchStart = mouseEvent->getLocation();
+			_camAtPanStart = m_obCamPos;
+		}
+	};
+	mouse->onMouseUp = [this](ax::Event* event) {
+		auto* mouseEvent = static_cast<ax::EventMouse*>(event);
+		const auto button = mouseEvent->getMouseButton();
+		if (button == ax::EventMouse::MouseButton::BUTTON_RIGHT
+			|| button == ax::EventMouse::MouseButton::BUTTON_MIDDLE)
+		{
+			_cameraPanning = false;
+		}
+	};
+	mouse->onMouseMove = [this](ax::Event* event) {
+		if (!_cameraPanning || _inPlaybackMode)
+			return;
+		auto* mouseEvent = static_cast<ax::EventMouse*>(event);
+		m_obCamPos = _camAtPanStart - (mouseEvent->getLocation() - _panTouchStart);
+	};
+	dir->getEventDispatcher()->addEventListenerWithSceneGraphPriority(mouse, this);
 
 	auto current = dir->getRunningScene();
 #if SHOW_IMGUI == true
@@ -487,8 +528,9 @@ bool LevelEditorLayer::init(GJGameLevel* level) {
 	MenuItemSpriteExtra* button = MenuItemSpriteExtra::create(buttonSprite, [this, dir](Node* btn)
 	{
 		this->_inPlaybackMode = !this->_inPlaybackMode;
+		this->_editorVisibilityAllSections = !this->_inPlaybackMode;
 		this->m_obCamPos.x = 0;
-		this->m_obCamPos.x = 0;
+		this->m_obCamPos.y = 0;
 		this->updateCamera(1.f / dir->getFrameRate());
 		resetLevel();
 	});
@@ -638,6 +680,8 @@ bool LevelEditorLayer::init(GJGameLevel* level) {
 
 		_objectPositionCache[key] = object;
 	}
+
+	_editorVisibilityAllSections = true;
 
 	return true;
 }

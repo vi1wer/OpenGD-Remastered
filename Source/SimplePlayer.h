@@ -22,20 +22,29 @@
 #include "Types.h"
 
 #include "GameToolbox/enums.h"
+#include <vector>
+
+class AnimatedIconSprite;
 
 class SimplePlayer : public ax::Sprite {
 public:
 	bool init(int cubeID);
 
-	ax::Sprite* m_pMainSprite;
-	ax::Sprite* m_pSecondarySprite;
-	ax::Sprite* m_pGlowSprite;
-	ax::Sprite* m_pExtraSprite;
-	ax::Sprite* m_pDomeSprite;
+	ax::Sprite* m_pMainSprite = nullptr;
+	ax::Sprite* m_pSecondarySprite = nullptr;
+	ax::Sprite* m_pGlowSprite = nullptr;
+	ax::Sprite* m_pExtraSprite = nullptr;
+	ax::Sprite* m_pDomeSprite = nullptr;
+
+	std::vector<ax::Sprite*> m_partMains;
+	std::vector<ax::Sprite*> m_partSeconds;
+	std::vector<ax::Sprite*> m_partGlows;
+	AnimatedIconSprite* m_animSprite = nullptr;
 
 	bool m_bHasGlow = false;
+	bool m_playIdleAnimation = false;
 
-	ax::Color3B m_MainColor = { 255, 255, 255 };
+	ax::Color3B m_MainColor = {255, 255, 255};
 	ax::Color3B m_SecondaryColor = {255, 255, 255};
 	ax::Color3B m_GlowColor = {255, 255, 255};
 
@@ -44,8 +53,20 @@ public:
 
 	void updateGamemode(int iconID, IconType mode);
 	void setMainColor(ax::Color3B col);
-		void setSecondaryColor(ax::Color3B col);
-		void setGlowColor(ax::Color3B col);
-		void updateIconColors();
-		void setGlow(bool glow);
+	void setSecondaryColor(ax::Color3B col);
+	void setGlowColor(ax::Color3B col);
+	void updateIconColors();
+	void setGlow(bool glow);
+	void setPlayIdleAnimation(bool play);
+
+	// Neutral gray look + uniform bounding size for garage grids.
+	void applyGarageStyle(float targetSize = 26.f);
+	void fitToSize(float targetSize);
+	void placeCenteredAt(const ax::Vec2& parentPoint);
+
+private:
+	void clearIconSprites();
+	void buildSimpleIcon(const char* prefix, int iconID, IconType mode);
+	void buildAnimatedIcon(const char* prefix, int iconID, IconType mode);
+	ax::Rect computeIconBounds() const;
 };

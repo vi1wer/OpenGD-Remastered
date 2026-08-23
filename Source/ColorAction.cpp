@@ -63,6 +63,8 @@ void ColorAction::startWithTarget(ax::Node* target)
 
 void ColorAction::update(float dt)
 {
+	if (!_target)
+		return;
 	_target->_color.r = static_cast<uint8_t>(_to.r - _deltar * (1 - dt));
 	_target->_color.g = static_cast<uint8_t>(_to.g - _deltag * (1 - dt));
 	_target->_color.b = static_cast<uint8_t>(_to.b - _deltab * (1 - dt));
@@ -71,7 +73,7 @@ void ColorAction::update(float dt)
 	if(_elapsed >= _duration && _copyColorId > -1)
 	{
 		_target->_copyingColorID = _copyColorId;
-		if(_target->_applyHsv)
+		if(_target->_applyHsv && _hsv)
 			_target->_hsvModifier = *_hsv;
 	}
 }

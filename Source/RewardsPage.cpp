@@ -259,9 +259,12 @@ void RewardsPage::sendHttpRequest()
 	GameToolbox::log("postData: {}", postData);
 		
 	auto _request = new ax::network::HttpRequest();
-	_request->setUrl("http://www.boomlings.com/database/getGJRewards.php");
+	_request->setUrl("https://www.boomlings.com/database/getGJRewards.php");
 	_request->setRequestType(ax::network::HttpRequest::Type::POST);
-	_request->setHeaders(std::vector<std::string>{"user-agent: "});
+	_request->setHeaders(std::vector<std::string>{
+		"User-Agent: ",
+		"Content-Type: application/x-www-form-urlencoded"
+	});
 	_request->setRequestData(postData.c_str(), postData.length());
 	_request->setResponseCallback(AX_CALLBACK_2(RewardsPage::onHttpRequestCompleted, this));
 	_request->setTag("valid");

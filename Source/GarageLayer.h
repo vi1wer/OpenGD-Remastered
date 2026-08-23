@@ -28,6 +28,8 @@ namespace ax
 { 
 	class Menu;
 	class Sprite;
+	class Label;
+	class Node;
 
 	namespace ui 
 	{ 
@@ -44,18 +46,36 @@ public:
 	void setupIconSelect();
 	const char* getSpriteName(int id, bool actived);
 	void setupPage(IconType mode, int page);
+	void setupColorPage();
 	void createStat(const char* sprite, const char* statKey);
 	int selectedGameModeInt();
+	int pageForSelectedIcon(IconType mode);
+	void updateModeTabs();
+	void selectMode(IconType mode, bool jumpToSelectedPage = true);
+	void applyPreviewColors();
+	void centerPreviewIcon();
+	void refreshCurrentPage();
+	void onEnter() override;
 
 private:
-	bool _popSceneWithTransition;
-	SimplePlayer* _iconPrev;
-	ax::ui::TextField* _userNameField;
-	ax::Menu* _menuIcons;
-	ax::Sprite* _selectSprite;
+	bool _popSceneWithTransition = false;
+	SimplePlayer* _iconPrev = nullptr;
+	ax::Vec2 _previewCenter{0.f, 0.f};
+	ax::ui::TextField* _userNameField = nullptr;
+	ax::Menu* _menuIcons = nullptr;
+	ax::Sprite* _selectSprite = nullptr;
+	ax::Sprite* _unlockLabel = nullptr;
+	ax::Menu* _modeTabMenu = nullptr;
+	ax::Menu* _pageArrowMenu = nullptr;
+	ax::Node* _colorUiLayer = nullptr;
 	int _numPerRow = 12;
 	int _numPerColumn = 3;
 	int _stats = 0;
 	IconType _selectedMode;
-	std::array<int, 8> _modePages{0};
+	bool _colorMode = false;
+	int _activeColorSlot = 0;
+	int _colorPage = 0;
+	std::array<int, 11> _modePages{};
+	ax::Label* _orbStatLabel = nullptr;
+	ax::Label* _diamondStatLabel = nullptr;
 };

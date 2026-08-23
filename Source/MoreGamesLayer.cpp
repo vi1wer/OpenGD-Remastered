@@ -1,29 +1,14 @@
-/*************************************************************************
-    OpenGD - Open source Geometry Dash.
-    Copyright (C) 2023  OpenGD Team
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License    
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*************************************************************************/
-
 #include "MoreGamesLayer.h"
 #include "DropDownLayer.h"
+#include "PromoItemSprite.h"
 #include "2d/Menu.h"
 #include "2d/Label.h"
 #include "base/Director.h"
 #include "Application.h"
 
 #include "GameToolbox/getTextureString.h"
+
+USING_NS_AX;
 
 MoreGamesLayer* MoreGamesLayer::create(){
 	auto pRet = new(std::nothrow) MoreGamesLayer();
@@ -40,14 +25,33 @@ MoreGamesLayer* MoreGamesLayer::create(){
 bool MoreGamesLayer::init()
 {
 	auto layer = ax::Layer::create();
-
-	std::string bigFontStr = GameToolbox::getTextureString("bigFont.fnt");
 	const auto& winSize = ax::Director::getInstance()->getWinSize();
 
-	auto label = ax::Label::createWithBMFont(bigFontStr, "Nothing here yet... sorry :(");
-	label->setScale(0.6f);
-	label->setPosition(0, 0);
-	layer->addChild(label);
+	struct PromoGame {
+		const char* sprite;
+		const char* url;
+	};
+
+	static const PromoGame promos[] = {
+		{"promo_boom.png", "http://www.robtopgames.com"},
+		{"promo_mm.png", "http://www.robtopgames.com"},
+		{"promo_mu.png", "http://www.robtopgames.com"},
+	};
+
+	auto menu = Menu::create();
+	menu->setPosition({0, 0});
+	layer->addChild(menu);
+
+	float startX = -120.f;
+	for (const auto& promo : promos)
+	{
+		auto item = PromoItemSprite::create(promo.sprite, [url = promo.url](Node*) {
+			Application::getInstance()->openURL(url);
+		});
+		item->setPosition({startX, 0});
+		menu->addChild(item);
+		startX += 120.f;
+	}
 
 	auto dropdownlayer = DropDownLayer::create(layer, "RobTop Games");
 	dropdownlayer->showLayer(true, false);

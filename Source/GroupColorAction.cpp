@@ -38,8 +38,11 @@ void GroupColorAction::startWithTarget(ax::Node* target)
 
 void GroupColorAction::update(float dt)
 {
+	if (!_target)
+		return;
 	_target->_color.r = static_cast<uint8_t>(_to.r - _deltar * (1 - dt));
 	_target->_color.g = static_cast<uint8_t>(_to.g - _deltag * (1 - dt));
 	_target->_color.b = static_cast<uint8_t>(_to.b - _deltab * (1 - dt));
-	if(_elapsed >= _duration && _resetGroupState) _target->groupState = GroupProperties::GroupState::NOT_CHANGING;
+	if (_elapsed >= _duration && _resetGroupState)
+		_target->groupState = GroupProperties::GroupState::NOT_CHANGING;
 }
