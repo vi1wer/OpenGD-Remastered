@@ -23,22 +23,36 @@
 #include <AudioEngine.h>
 
 #include "LevelDebugLayer.h"
-#include "LevelEditorLayer.h"
 
 #include "2d/Label.h"
 #include "2d/Menu.h"
+#include "2d/Sprite.h"
+#include "2d/SpriteFrameCache.h"
 #include "2d/Transition.h"
 #include "MenuLayer.h"
 #include "GJGameLevel.h"
+#include "GameManager.h"
 #include "base/Director.h"
 #include "GameToolbox/log.h"
 #include "GameToolbox/getTextureString.h"
 
-#include "ButtonSprite.h"
 #include "fmt/format.h"
 #include <algorithm>
 
 bool LevelPage::replacingScene = false;
+
+namespace
+{
+int orbsForStars(int stars)
+{
+	if (stars <= 0)
+		return 0;
+	static const int table[] = {0, 50, 75, 100, 125, 150, 175, 200, 225, 250, 275};
+	if (stars <= 10)
+		return table[stars];
+	return 275 + (stars - 10) * 25;
+}
+} // namespace
 
 bool LevelPage::init(GJGameLevel* level)
 {
@@ -47,10 +61,6 @@ bool LevelPage::init(GJGameLevel* level)
 	if (!level)
 		return false;
 
-	//testing
-	//level->_normalPercent = static_cast<float>(GameToolbox::randomInt(0, 100));
-	//level->_practicePercent = static_cast<float>(GameToolbox::randomInt(0, 100));
-	
 	GameToolbox::log("normal: {}, practice: {}", level->_normalPercent, level->_practicePercent);
 	
 	_level = level;
@@ -99,60 +109,105 @@ bool LevelPage::init(GJGameLevel* level)
 	addProgressBar(winSize.height / 2.f - 30.f, level->_normalPercent, "Normal Mode", {0, 255, 0});
 	addProgressBar(winSize.height / 2.f - 80.f, level->_practicePercent, "Practice Mode", {0, 255, 255});
 
-
-	
 	auto scale9 = ax::ui::Scale9Sprite::create("square02_001.png");
 	if (!scale9)
 		return false;
 	scale9->setContentSize({340, 95});
 	scale9->setOpacity(125);
-	
-	auto levelName = ax::Label::createWithBMFont(bigFontTexture, level->_levelName);
-	if (levelName)
-	{
-		levelName->setPosition(190, 50.5);
-		levelName->setScale(0.904f);
-		scale9->addChild(levelName, 0);
-	}
 
 	if (auto diffIcon = ax::Sprite::createWithSpriteFrameName(GJGameLevel::getDifficultySprite(level, kMainLevels)))
 	{
 		diffIcon->setScale(1.1f);
-		diffIcon->setPosition(35.75, 50.5);
+		diffIcon->setPosition(35.75f, 50.5f);
 		scale9->addChild(diffIcon, 0);
 	}
 
-	//1.0 didnt have stars apparently
-	// auto starIcon = ax::Sprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
-	// starIcon->setScale(0.7);
-	// starIcon->setPosition({325, 82});
-	// mainNode->addChild(starIcon, 0);
+	// Level name — full size, no shrink. Line break only for ToE / ToE 2.
+	std::string displayName = level->_levelName;
+	if (displayName == "Theory Of Everything")
+		displayName = "Theory Of\nEverything";
+	else if (displayName == "Theory Of Everything 2")
+		displayName = "Theory Of\nEverything 2";
 
-	// auto starAmt = ax::Label::createWithBMFont("bigFont.fnt", std::to_string(level->_Stars));
-	// starAmt->setPosition({313, 82.5});
-	// starAmt->setScale(0.5);
-	// starAmt->setAnchorPoint({1, 0.5});
-	// mainNode->addChild(starAmt, 0);
+	auto levelName = ax::Label::createWithBMFont(bigFontTexture, displayName);
+	if (levelName)
+	{
+		levelName->setAlignment(ax::TextHAlignment::CENTER, ax::TextVAlignment::CENTER);
+		levelName->setAnchorPoint({0.5f, 0.5f});
+		levelName->setScale(0.904f);
+		levelName->setPosition(190.f, 50.5f);
+		scale9->addChild(levelName, 0);
+	}
+
+	// Stars reward - top-right (original LevelPage proportions).
+	if (level->_stars > 0)
+	{
+		auto* starIcon = ax::Sprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
+		if (starIcon)
+		{
+			starIcon->setScale(0.85f);
+			starIcon->setPosition({322.f, 78.f});
+			scale9->addChild(starIcon, 1);
+
+			auto* starAmt = ax::Label::createWithBMFont(bigFontTexture, std::to_string(level->_stars));
+			starAmt->setScale(0.55f);
+			starAmt->setAnchorPoint({1.f, 0.5f});
+			starAmt->setPosition({starIcon->getPositionX() - 14.f, starIcon->getPositionY() + 0.5f});
+			scale9->addChild(starAmt, 1);
+		}
+	}
+
+	// Orbs reward - bottom-left (number left of icon, Garage/Profile style).
+	const int orbReward = orbsForStars(level->_stars);
+	if (orbReward > 0)
+	{
+		auto* orbIcon = ax::Sprite::createWithSpriteFrameName("currencyOrbIcon_001.png");
+		if (orbIcon)
+		{
+			orbIcon->setScale(0.85f);
+			orbIcon->setPosition({52.f, 20.f});
+			scale9->addChild(orbIcon, 1);
+
+			auto* orbAmt = ax::Label::createWithBMFont(bigFontTexture, std::to_string(orbReward));
+			orbAmt->setScale(0.5f);
+			orbAmt->setAnchorPoint({1.f, 0.5f});
+			orbAmt->setPosition({orbIcon->getPositionX() - 14.f, orbIcon->getPositionY()});
+			scale9->addChild(orbAmt, 1);
+		}
+	}
+
+	// Secret coins - bottom-right. Original LevelPage uses secretCoinUI (large), not tiny GJ_coinsIcon.
+	{
+		int coinMask = 0;
+		if (auto* gm = GameManager::getInstance())
+			coinMask = gm->getLevelCoins(level->_levelID);
+
+		const char* coinFrame = "secretCoinUI_001.png";
+		if (!ax::SpriteFrameCache::getInstance()->getSpriteFrameByName(coinFrame))
+			coinFrame = "GJ_coinsIcon_001.png";
+
+		for (int i = 0; i < 3; i++)
+		{
+			auto* coin = ax::Sprite::createWithSpriteFrameName(coinFrame);
+			if (!coin)
+				continue;
+			coin->setScale(0.4f);
+			coin->setPosition({278.f + i * 24.f, 18.f});
+			const bool got = (coinMask & (1 << i)) != 0;
+			if (!got)
+			{
+				coin->setColor(ax::Color3B(70, 70, 70));
+				coin->setOpacity(160);
+			}
+			scale9->addChild(coin, 1);
+		}
+	}
+
 	auto mainBtn = MenuItemSpriteExtra::create(scale9, [this](Node* btn) { onPlay(btn); });
 	mainBtn->setScaleMultiplier(1.1f);
 	auto levelMenu = ax::Menu::create();
 	levelMenu->addChild(mainBtn);
 	levelMenu->setPosition({ winSize.width / 2.f, winSize.height / 2.f + 60 });
-	auto buttonSprite = ButtonSprite::create("editor", 0x32, 0, 0.6, false, GameToolbox::getTextureString("bigFont.fnt"), GameToolbox::getTextureString("GJ_button_01.png"), 30);
-	MenuItemSpriteExtra* button = MenuItemSpriteExtra::create(buttonSprite, [this](Node* btn)
-	{
-		if (LevelPage::replacingScene)
-			return;
-
-		ax::Scene* scene = LevelEditorLayer::scene(_level);
-		ax::AudioEngine::stopAll();
-		ax::AudioEngine::play2d("playSound_01.ogg", false, 0.2f);
-		ax::Director::getInstance()->replaceScene(ax::TransitionFade::create(0.5f, scene));
-		LevelPage::replacingScene = true;
-		MenuLayer::music = false;
-	});
-	button->setPositionY(70);
-	levelMenu->addChild(button);
 	addChild(levelMenu);
 	
 	return true;

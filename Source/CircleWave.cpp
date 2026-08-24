@@ -22,6 +22,7 @@
 #include "2d/ActionManager.h"
 #include "2d/ActionEase.h"
 #include "base/Types.h"
+#include <algorithm>
 
 USING_NS_AX;
 
@@ -44,6 +45,7 @@ bool CircleWave::init(float duration, Color4B color, float radiusMin, float radi
 	this->_lineWidth = lineWidth;
 	this->_filled = filled;
 	this->_followedNode = nullptr;
+	setLineWidth(std::max(lineWidth, 2.f));
 	setBlendFunc(BlendFunc::ADDITIVE);
 
 	if (easing)
@@ -87,11 +89,28 @@ void CircleWave::update(float dt)
 		this->setPosition(_followedNode->getPosition());
 
 	this->clear();
-	const int segs = this->_radius <= 400.f ? 30 : 60;
+
+	const Color4B col(static_cast<uint8_t>(std::clamp(_color.r, 0.f, 1.f) * 255.f),
+					  static_cast<uint8_t>(std::clamp(_color.g, 0.f, 1.f) * 255.f),
+					  static_cast<uint8_t>(std::clamp(_color.b, 0.f, 1.f) * 255.f),
+					  static_cast<uint8_t>(std::clamp(_color.a, 0.f, 1.f) * 255.f));
+
+	const int segs = this->_radius <= 400.f ? 48 : 64;
 	if (this->_filled)
-		this->drawSolidCircle(Vec2::ZERO, this->_radius, 0.0f, segs, this->_color);
+	{
+		this->drawSolidCircle(Vec2::ZERO, this->_radius, 0.0f, segs, col);
+	}
 	else
-		this->drawCircle(Vec2::ZERO, this->_radius, 0.0f, segs, false, this->_color);
+	{
+		// Thicker ring by drawing several concentric circles (GD-style pulse).
+		const float thickness = std::max(2.f, _lineWidth);
+		setLineWidth(2.f);
+		for (float o = 0.f; o < thickness; o += 1.5f)
+		{
+			const float r = std::max(1.f, this->_radius - o);
+			this->drawCircle(Vec2::ZERO, r, 0.0f, segs, false, col);
+		}
+	}
 }
 
 void CircleWave::followNode(Node* node) {

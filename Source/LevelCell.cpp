@@ -33,6 +33,8 @@
 #include "GameToolbox/nodes.h"
 #include "GameToolbox/conv.h"
 
+#include <algorithm>
+
 USING_NS_AX;
 
 LevelCell* LevelCell::create(GJGameLevel* level)
@@ -80,15 +82,25 @@ bool LevelCell::init(GJGameLevel* level) {
 
 	float coinYPos;
 
+	// Keep the difficulty face centered; user coins sit directly under the rating.
 	if (level->_stars && level->_coins)
 	{
-		difficultySpritePos += {0, 14};
-		coinYPos = -45.5;
+		difficultySpritePos += {0, 10};
+		coinYPos = -38.f;
 	}
-	else if (level->_coins || level->_stars)
+	else if (level->_coins)
+	{
+		difficultySpritePos += {0, 6};
+		coinYPos = -32.f;
+	}
+	else if (level->_stars)
 	{
 		difficultySpritePos += {0, 5};
-		coinYPos = -31.5;
+		coinYPos = -31.5f;
+	}
+	else
+	{
+		coinYPos = -32.f;
 	}
 
 	if (isDailyOrWeekly)
@@ -117,10 +129,11 @@ bool LevelCell::init(GJGameLevel* level) {
 	_layer->addChild(diffSprite, 2);
 
 
-	// Stars
+	// Stars (under difficulty, above user coins when both exist)
 	if (level->_stars > 0) {
+		const float starOffsetY = level->_coins > 0 ? -22.f : -30.f;
 		Sprite* starSprite = Sprite::createWithSpriteFrameName("star_small01_001.png");
-		starSprite->setPosition(difficultySpritePos + ax::Vec2(8, -30));
+		starSprite->setPosition(difficultySpritePos + ax::Vec2(8, starOffsetY));
 		_layer->addChild(starSprite);
 
 		Label* starLabel = Label::createWithBMFont(bigFontStr, fmt::format("{}", level->_stars));

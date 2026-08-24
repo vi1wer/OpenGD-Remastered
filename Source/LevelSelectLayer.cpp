@@ -156,8 +156,8 @@ bool LevelSelectLayer::init(int page)
 		{ "Theory Of Everything 2", "RobTop", 18 },
 		{ "Geometrical Dominator", "RobTop", 19 },
 		{ "Deadlocked", "RobTop", 20 },
-		{ "Fingerdash", "RobTop", 21 },
-		{ "Dash", "RobTop", 22 }
+		{ "Fingerdash", "RobTop", 21 }
+		// Dash (id 22) hidden from the official level select.
 	});
 	
 	//TODO: add getters on level page because they are actually owning the stuff

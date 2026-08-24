@@ -33,16 +33,21 @@ bool GroundLayer::init(int groundID)
 
 	auto name = fmt::format("groundSquare_{:02}_001.png", groundID);
 	this->_sprite = Sprite::create(GameToolbox::getTextureString(name));
-	if(!this->_sprite)
+	if (!this->_sprite)
 	{
 		auto name2 = fmt::format("groundSquare_{:02}_001.png", 1);
-		this->_sprite = Sprite::create(GameToolbox::getTextureString(name));
+		this->_sprite = Sprite::create(GameToolbox::getTextureString(name2));
 	}
+	if (!this->_sprite)
+		return false;
 	_sprite->setStretchEnabled(false);
 	this->m_fOneGroundSize = this->_sprite->getTextureRect().size.width;
-	this->_sprite->getTexture()->setTexParameters(
-		{backend::SamplerFilter::NEAREST, backend::SamplerFilter::NEAREST, backend::SamplerAddressMode::REPEAT,
-		 backend::SamplerAddressMode::REPEAT});
+	if (auto* tex = this->_sprite->getTexture())
+	{
+		tex->setTexParameters(
+			{backend::SamplerFilter::NEAREST, backend::SamplerFilter::NEAREST, backend::SamplerAddressMode::REPEAT,
+			 backend::SamplerAddressMode::REPEAT});
+	}
 	this->_sprite->setTextureRect({0, 0, winSize.width + this->m_fOneGroundSize, _sprite->getTextureRect().size.height});
 	this->_sprite->setAnchorPoint({0, 0});
 	this->_sprite->setPosition({0, -50});

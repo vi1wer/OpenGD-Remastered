@@ -20,7 +20,14 @@
 #include "GJGameLevel.h"
 #include "base64.h"
 #include "external/constants.h"
+#include "platform/FileUtils.h"
+#include "GameToolbox/log.h"
+#include <fmt/format.h>
 #include <cstring>
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+#include <ShlObj.h>
+#endif
 
 constexpr int ARTIST_DJVI = 0;
 constexpr int ARTIST_WATERFLAME = 1;
@@ -65,6 +72,48 @@ std::string LevelTools::getAudioFilename(int lid)
 		case 21: return "Dash.mp3";
 		default: return "StereoMadness.mp3";
 	}
+}
+
+std::string LevelTools::resolveAudioPath(GJGameLevel* level)
+{
+	if (!level)
+		return "StereoMadness.mp3";
+
+	auto* fu = ax::FileUtils::getInstance();
+
+	// Custom Newgrounds / NCS / etc. song downloaded by Geometry Dash.
+	if (level->_songID > 0)
+	{
+		const std::string fileName = fmt::format("{}.mp3", level->_songID);
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+		char appdata[MAX_PATH] = {};
+		if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, appdata)))
+		{
+			const std::string path = fmt::format("{}\\GeometryDash\\{}", appdata, fileName);
+			if (fu->isFileExist(path))
+				return path;
+		}
+#endif
+
+		// Search paths (Resources / working dir) as a fallback.
+		if (fu->isFileExist(fileName))
+			return fu->fullPathForFilename(fileName);
+
+		const std::string nested = fmt::format("GeometryDash/{}", fileName);
+		if (fu->isFileExist(nested))
+			return fu->fullPathForFilename(nested);
+
+		GameToolbox::log("Custom song {} not found at AppData/GeometryDash — falling back to official",
+						 level->_songID);
+	}
+
+	// Official RobTop soundtrack index.
+	int soundtrack = level->_musicID;
+	if (level->_songID <= 0)
+		soundtrack = level->_officialSongID != 0 ? level->_officialSongID : level->_musicID;
+
+	return getAudioFilename(soundtrack);
 }
 
 std::string LevelTools::getAudioTitle(int lid) {
@@ -314,11 +363,11 @@ void LevelTools::applyMainLevelRating(GJGameLevel* level)
 		level->_difficultyNumerator = 40;
 		level->_stars = 10;
 		break;
-	case 20: // Deadlocked - Medium Demon
+	case 20: // Deadlocked — display Hard Demon, count as Easy Demon in profile
 		level->_difficultyNumerator = 50;
 		level->_stars = 15;
 		level->_demon = true;
-		level->_demonDifficulty = 4;
+		level->_demonDifficulty = 3;
 		break;
 	case 21:
 		level->_difficultyNumerator = 40;

@@ -343,24 +343,9 @@ std::string GJGameLevel::getDifficultySprite(GJGameLevel* level, DifficultyType 
 
 	if (level->_demon)
 	{
-		switch (level->_demonDifficulty) {
-		case 3:
-			if (type == kMainLevels) return "diffIcon_07_btn_001.png";
-			return type == kLevelInfoLayer ? "difficulty_07_btn2_001.png" : "difficulty_07_btn_001.png";
-		case 4:
-			if (type == kMainLevels) return "diffIcon_08_btn_001.png";
-			return type == kLevelInfoLayer ? "difficulty_08_btn2_001.png" : "difficulty_08_btn_001.png";
-		case 5:
-			if (type == kMainLevels) return "diffIcon_09_btn_001.png";
-			return type == kLevelInfoLayer ? "difficulty_09_btn2_001.png" : "difficulty_09_btn_001.png";
-		case 6:
-			if (type == kMainLevels) return "diffIcon_10_btn_001.png";
-			return type == kLevelInfoLayer ? "difficulty_10_btn2_001.png" : "difficulty_10_btn_001.png";
-		default:
-		case 0:
-			if (type == kMainLevels) return "diffIcon_06_btn_001.png";
-			return type == kLevelInfoLayer ? "difficulty_06_btn2_001.png" : "difficulty_06_btn_001.png";
-		}
+		// Always show Hard Demon face; _demonDifficulty stays Easy (3) for profile/stats.
+		if (type == kMainLevels) return "diffIcon_09_btn_001.png";
+		return type == kLevelInfoLayer ? "difficulty_09_btn2_001.png" : "difficulty_09_btn_001.png";
 	}
 
 	switch (diff)

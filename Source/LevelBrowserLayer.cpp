@@ -36,6 +36,9 @@
 #include "GameToolbox/network.h"
 #include "GameToolbox/conv.h"
 #include "GameToolbox/nodes.h"
+#include "SongManager.h"
+
+#include <unordered_map>
 
 
 //TODO: rewrite cached levels + handle delete levels
@@ -204,44 +207,57 @@ void LevelBrowserLayer::onHttpRequestCompleted(ax::network::HttpClient* sender, 
 			
 			auto splits = GameToolbox::splitByDelimStringView((*str), '#');
 			auto levels = GameToolbox::splitByDelimStringView(splits[0], '|');
-			auto authorsStrings = GameToolbox::splitByDelimStringView(splits[1], '|');
-			auto songsStrings = GameToolbox::splitByDelimStringView(splits[2], ':');
-			
-			std::vector<std::vector<std::string_view>> authors, songs;
-			authors.reserve(authorsStrings.size()); //pre-allocate enough memory
-			songs.reserve(songsStrings.size());
-			// songs.reserve(songsStrings.size());
-			for(const std::string_view aStr : authorsStrings) {
-				authors.push_back(std::move(GameToolbox::splitByDelimStringView(aStr, ':')));
-			}
+			auto authorsStrings = splits.size() > 1 ? GameToolbox::splitByDelimStringView(splits[1], '|')
+												   : std::vector<std::string_view>{};
 
-			for(const std::string_view aStr : songsStrings) {
-				songs.push_back(std::move(GameToolbox::splitByDelimStringView(aStr, '|')));
+			std::vector<std::vector<std::string_view>> authors;
+			authors.reserve(authorsStrings.size());
+			for (const std::string_view aStr : authorsStrings)
+				authors.push_back(GameToolbox::splitByDelimStringView(aStr, ':'));
+
+			std::unordered_map<int, SongMeta> songsById;
+			if (splits.size() > 2)
+			{
+				constexpr std::string_view songDelim = ":#:";
+				std::string_view songsPart = splits[2];
+				size_t start = 0;
+				while (start <= songsPart.size())
+				{
+					const size_t pos = songsPart.find(songDelim, start);
+					const auto entry = (pos == std::string_view::npos) ? songsPart.substr(start)
+																	  : songsPart.substr(start, pos - start);
+					auto parsed = SongManager::parseSongMeta(entry);
+					if (parsed.songID > 0)
+					{
+						SongManager::get()->cacheMeta(parsed);
+						songsById[parsed.songID] = parsed;
+					}
+					if (pos == std::string_view::npos)
+						break;
+					start = pos + songDelim.size();
+				}
 			}
 			
 			auto getAuthor = [&](GJGameLevel* gjlevel) -> std::string_view
 			{
 				for(const auto& author : authors)
 				{
-					if(GameToolbox::stoi(author[0]) == gjlevel->_playerID)
+					if (author.size() > 1 && GameToolbox::stoi(author[0]) == gjlevel->_playerID)
 						return author[1];
 				}
 				return "-";
 			};
 
-			auto getSong = [&](GJGameLevel* gjlevel) -> std::string_view
+			auto getSong = [&](GJGameLevel* gjlevel) -> std::string
 			{
-				// for(const auto& song : songs)
-				// {
-				// 	// for(auto s : song) GameToolbox::log("\n{}", s);
-				// 	// if(GameToolbox::stoi(song[0]) == gjlevel->_playerID)
-				// 	// 	return song[1];
-				// }
-				return "Cool catchy song";
+				auto it = songsById.find(gjlevel->_songID);
+				if (it != songsById.end())
+					return it->second.name;
+				return gjlevel->_songName.empty() ? "Unknown" : gjlevel->_songName;
 			};
 			
 			std::vector<GJGameLevel*> toInsert;
-			toInsert.reserve(levels.size()); //pre-allocate enough memory
+			toInsert.reserve(levels.size());
 			
 			for (size_t i = 0; i < levels.size(); i++)
 			{

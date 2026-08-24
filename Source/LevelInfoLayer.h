@@ -7,7 +7,7 @@
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
+    10|    This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
@@ -22,6 +22,7 @@
 class LoadingCircle;
 class MenuItemSpriteExtra;
 class GJGameLevel;
+class CustomSongWidget;
 
 namespace ax 
 { 
@@ -38,10 +39,12 @@ namespace ax
 class LevelInfoLayer : public ax::Layer
 {
 private:
-	LoadingCircle* loading;
-	MenuItemSpriteExtra* playBtn;
-	GJGameLevel* _level;
-	ax::network::HttpRequest* _request;
+	LoadingCircle* loading = nullptr;
+	MenuItemSpriteExtra* playBtn = nullptr;
+	CustomSongWidget* _songWidget = nullptr;
+	GJGameLevel* _level = nullptr;
+	ax::network::HttpRequest* _request = nullptr;
+
 public:
 	static LevelInfoLayer* create(GJGameLevel* level);
 

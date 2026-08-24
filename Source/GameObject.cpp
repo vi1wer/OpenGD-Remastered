@@ -17,6 +17,7 @@
 *************************************************************************/
 
 #include "GameObject.h"
+#include "2d/ActionInstant.h"
 #include "2d/ActionInterval.h"
 #include "2d/Animation.h"
 #include "2d/ParticleSystemQuad.h"
@@ -27,6 +28,7 @@
 #include "EffectGameObject.h"
 #include "GameToolbox/conv.h"
 #include "GameToolbox/log.h"
+#include "GameToolbox/nodes.h"
 #include "PlayLayer.h"
 #include "PlayerObject.h"
 #include "platform/FileUtils.h"
@@ -159,9 +161,11 @@ bool GameObject::isPassableDecorationFrame(std::string_view frame)
 {
 	if (frame.empty())
 		return false;
+	if (isPixelArtFrame(frame))
+		return true;
 	static constexpr const char* kDecoPrefixes[] = {
 		"d_", "chain_", "rod_", "smallOutline_", "block008_", "d_link", "d_bar", "d_ball", "d_wheel",
-		"d_cloud", "d_grass", "d_03_", "plank_01_small", "invis_plank", "d_art", "d_round"};
+		"d_cloud", "d_grass", "d_03_", "plank_01_small", "invis_plank", "d_art", "d_round", "persp_outline_"};
 	for (const char* prefix : kDecoPrefixes)
 	{
 		const size_t len = std::strlen(prefix);
@@ -169,6 +173,30 @@ bool GameObject::isPassableDecorationFrame(std::string_view frame)
 			return true;
 	}
 	return false;
+}
+
+bool GameObject::isPixelArtFrame(std::string_view frame)
+{
+	if (frame.empty())
+		return false;
+	// GD pixel blocks / pixel art are visual-only (no collision).
+	return frame.rfind("pixelart_", 0) == 0 || frame.rfind("pixelb_", 0) == 0 || frame.rfind("pixel_", 0) == 0 ||
+		   frame.rfind("d_pixelArt", 0) == 0 || frame.rfind("d_pixelart", 0) == 0 ||
+		   frame.find("pixelart_") != std::string_view::npos || frame.find("pixelb_") != std::string_view::npos;
+}
+
+bool GameObject::isCollidableOutlineFrame(std::string_view frame)
+{
+	if (frame.empty())
+		return false;
+	// Decorative outlines — no collision.
+	if (frame.find("smallOutline") != std::string_view::npos)
+		return false;
+	if (frame.find("persp_outline") != std::string_view::npos)
+		return false;
+	// Solid outline lines used as platforms / edges in GD.
+	return frame.find("blockOutline") != std::string_view::npos ||
+		   frame.find("invisibleOutline") != std::string_view::npos;
 }
 
 bool GameObject::isCoin() const
@@ -200,6 +228,8 @@ void GameObject::startCoinAnimation()
 bool GameObject::wantsCollisionBounds() const
 {
 	if (_isNoTouch)
+		return false;
+	if (isPixelArtFrame(getBlockFrame(m_pId)))
 		return false;
 	if (_pObjectType == kGameObjectTypeDecoration || _pObjectType == kGameObjectTypeSpecial)
 		return false;
@@ -233,14 +263,14 @@ Hitbox GameObject::resolveObjectHitbox(int objectID, GameObject* obj)
 	if ((hb.w <= 0.f || hb.h <= 0.f) && obj)
 	{
 		std::string_view createdFrame = getBlockFrame(objectID);
-		if (createdFrame.rfind("pixelart_", 0) == 0)
-		{
-			const auto sz = obj->getContentSize();
-			if (sz.width > 0.f && sz.height > 0.f)
-				hb = {sz.height, sz.width, -sz.width * 0.5f, -sz.height * 0.5f};
-			else
-				hb = {5.f, 5.f, -2.5f, -2.5f};
-		}
+		// Pixel art never gets a synthetic hitbox.
+		if (isPixelArtFrame(createdFrame))
+			return {0, 0, 0, 0};
+
+		// Collidable outline lines without a table entry: full 30x30 block.
+		if (isCollidableOutlineFrame(createdFrame))
+			return {30.f, 30.f, -15.f, -15.f};
+
 		if (hb.w <= 0.f || hb.h <= 0.f)
 		{
 			switch (obj->getGameObjectType())
@@ -402,7 +432,7 @@ Hitbox GameObject::resolveHitbox(int objectID)
 		return {40.f, 40.f, -20.f, -20.f};
 
 	std::string_view frame = getBlockFrame(objectID);
-	if (isPassableDecorationFrame(frame))
+	if (isPassableDecorationFrame(frame) || isPixelArtFrame(frame))
 		return {0, 0, 0, 0};
 
 	const bool decoSpike = frame.find("spikeart") != std::string_view::npos ||
@@ -412,6 +442,9 @@ Hitbox GameObject::resolveHitbox(int objectID)
 
 	if (frame.find("lava") != std::string_view::npos)
 		return {12.f, 30.f, -15.f, -6.f};
+
+	if (isCollidableOutlineFrame(frame))
+		return {30.f, 30.f, -15.f, -15.f};
 
 	if (!isSlopeFrame(frame))
 		return {0, 0, 0, 0};
@@ -635,14 +668,18 @@ void GameObject::customSetup()
 
 	{
 		std::string_view frame = getBlockFrame(getID());
-		if (frame.rfind("pixelart_", 0) == 0 && getGameObjectType() != kGameObjectTypeDecoration)
+		// Pixel objects are decoration-only (no hitboxes), regardless of object.json.
+		if (isPixelArtFrame(frame))
+			setGameObjectType(kGameObjectTypeDecoration);
+		// Outline lines that collide in GD (blockOutline / invisibleOutline / thick / outer).
+		else if (isCollidableOutlineFrame(frame))
 			setGameObjectType(kGameObjectTypeSolid);
 	}
 
 	// Spikes / pits must kill even if object.json marks them as solids.
 	{
 		std::string_view frame = getBlockFrame(getID());
-		if (!isPassableDecorationFrame(frame))
+		if (!isPassableDecorationFrame(frame) && !isPixelArtFrame(frame))
 		{
 			const bool decoSpike = frame.find("spikeart") != std::string_view::npos ||
 								   frame.find("spikewheel") != std::string_view::npos;
@@ -830,57 +867,63 @@ void GameObject::customSetup()
 		break;
 	case 35: // yellow pad
 		createAndAddParticle("bumpEffect.plist", 0);
+		_animateOnTrigger = true;
 		if (_particle)
-			_particle->setPositionY(getPositionY() - 4.f);
+			_particle->setStartColor(ax::Color4F(1.f, 1.f, 0.f, 1.f));
 		break;
 	case 67: // blue pad
 		createAndAddParticle("bumpEffect.plist", 0);
+		_animateOnTrigger = true;
 		if (_particle)
-		{
-			_particle->setStartColor({0, 255, 255, 255});
-			_particle->setPositionY(getPositionY() - 4.f);
-		}
+			_particle->setStartColor(ax::Color4F(0.f, 1.f, 1.f, 1.f));
 		break;
 	case 140: // pink pad
 		createAndAddParticle("bumpEffect.plist", 0);
+		_animateOnTrigger = true;
 		if (_particle)
-		{
-			_particle->setStartColor({255, 0, 255, 255});
-			_particle->setPositionY(getPositionY() - 4.f);
-		}
+			_particle->setStartColor(ax::Color4F(1.f, 0.f, 1.f, 1.f));
 		break;
 	case 1332: // red pad
 		createAndAddParticle("bumpEffect.plist", 0);
+		_animateOnTrigger = true;
 		if (_particle)
-		{
-			_particle->setStartColor({255, 0, 0, 255});
-			_particle->setPositionY(getPositionY() - 4.f);
-		}
+			_particle->setStartColor(ax::Color4F(1.f, 0.15f, 0.15f, 1.f));
 		break;
 	case 36: // yellow orb
 		createAndAddParticle("ringEffect.plist", 3);
+		_animateOnTrigger = true;
 		if (_particle)
-			_particle->setStartColor({255, 255, 0, 255});
+			_particle->setStartColor(ax::Color4F(1.f, 1.f, 0.f, 1.f));
 		break;
 	case 84: // blue orb
 		createAndAddParticle("ringEffect.plist", 3);
+		_animateOnTrigger = true;
 		if (_particle)
-			_particle->setStartColor({0, 255, 255, 255});
+			_particle->setStartColor(ax::Color4F(0.f, 1.f, 1.f, 1.f));
 		break;
 	case 141: // pink orb
 		createAndAddParticle("ringEffect.plist", 3);
+		_animateOnTrigger = true;
 		if (_particle)
-			_particle->setStartColor({255, 0, 255, 255});
+			_particle->setStartColor(ax::Color4F(1.f, 0.f, 1.f, 1.f));
 		break;
 	case 1022: // green orb
 		createAndAddParticle("ringEffect.plist", 3);
+		_animateOnTrigger = true;
 		if (_particle)
-			_particle->setStartColor({0, 255, 0, 255});
+			_particle->setStartColor(ax::Color4F(0.f, 1.f, 0.2f, 1.f));
+		break;
+	case 1330: // black / drop orb
+		createAndAddParticle("ringEffect.plist", 3);
+		_animateOnTrigger = true;
+		if (_particle)
+			_particle->setStartColor(ax::Color4F(0.35f, 0.2f, 0.55f, 1.f));
 		break;
 	case 1333: // red orb
 		createAndAddParticle("ringEffect.plist", 3);
+		_animateOnTrigger = true;
 		if (_particle)
-			_particle->setStartColor({255, 0, 0, 255});
+			_particle->setStartColor(ax::Color4F(1.f, 0.15f, 0.15f, 1.f));
 		break;
 	case 1582:
 	case 1583:
@@ -917,9 +960,8 @@ void GameObject::createAndAddParticle(const char* path, int zOrder)
 {
 	if (_particle)
 	{
-		AX_SAFE_RELEASE(_particle);
 		_particle->cleanup();
-		_particle = nullptr;
+		AX_SAFE_RELEASE_NULL(_particle);
 	}
 
 	_particle = ParticleSystemQuad::create(path);
@@ -935,8 +977,11 @@ void GameObject::createAndAddParticle(const char* path, int zOrder)
 	_particle->setGlobalZOrder(static_cast<float>(zOrder));
 	_particle->retain();
 	_particle->setPositionType(ParticleSystem::PositionType::GROUPED);
+	_particle->setBlendFunc(GameToolbox::getBlending());
 	_particle->setRotation(getRotation());
-	_particle->resetSystem();
+	// Don't play at level load — only when the pad/orb is activated.
+	_particle->stopSystem();
+	_particle->setVisible(false);
 }
 
 void GameObject::setupCustomParticle(std::string_view data)
@@ -1311,8 +1356,10 @@ GameObject* GameObject::createFromString(std::string_view data)
 
 	GameObject* obj = nullptr;
 
-	// index 1 is object id
-	// GameToolbox::log("loading: {}", data);
+	// Need at least key,value for object id (properties[0]=1, properties[1]=id).
+	if (properties.size() < 2)
+		return nullptr;
+
 	int objectID = GameToolbox::stoi(properties[1]);
 
 	std::string_view frame = GameObject::getBlockFrame(objectID);
@@ -1355,8 +1402,19 @@ GameObject* GameObject::createFromString(std::string_view data)
 	auto bgl = BaseGameLayer::getInstance();
 	// TODO: set uniqueID in base layer
 
+	auto parseHSV = [](std::string_view raw, GDHSV& out) {
+		auto hsv = GameToolbox::splitByDelimStringView(raw, 'a');
+		if (hsv.size() < 5)
+			return;
+		out.h = GameToolbox::stof(hsv[0]);
+		out.s = GameToolbox::stof(hsv[1]);
+		out.v = GameToolbox::stof(hsv[2]);
+		out.sChecked = GameToolbox::stoi(hsv[3]) != 0;
+		out.vChecked = GameToolbox::stoi(hsv[4]) != 0;
+	};
+
 	// iterate over every key
-	for (size_t i = 0; i < properties.size() - 1; i += 2)
+	for (size_t i = 0; i + 1 < properties.size(); i += 2)
 	{
 		int key = GameToolbox::stoi(properties[i]);
 		switch (key)
@@ -1400,7 +1458,7 @@ GameObject* GameObject::createFromString(std::string_view data)
 			break;
 		case 21:
 			obj->_mainColorChannel = GameToolbox::stoi(properties[i + 1]);
-			if (!bgl->_colorChannels.contains(obj->_mainColorChannel))
+			if (bgl && !bgl->_colorChannels.contains(obj->_mainColorChannel))
 			{
 				bgl->_colorChannels.insert({obj->_mainColorChannel, SpriteColor(Color3B::WHITE, 255, 0)});
 				bgl->_originalColors.insert({obj->_mainColorChannel, SpriteColor(Color3B::WHITE, 255, 0)});
@@ -1408,7 +1466,7 @@ GameObject* GameObject::createFromString(std::string_view data)
 			break;
 		case 22:
 			obj->_secColorChannel = GameToolbox::stoi(properties[i + 1]);
-			if (!bgl->_colorChannels.contains(obj->_secColorChannel))
+			if (bgl && !bgl->_colorChannels.contains(obj->_secColorChannel))
 			{
 				bgl->_colorChannels.insert({obj->_secColorChannel, SpriteColor(Color3B::WHITE, 255, 0)});
 				bgl->_originalColors.insert({obj->_secColorChannel, SpriteColor(Color3B::WHITE, 255, 0)});
@@ -1454,24 +1512,12 @@ GameObject* GameObject::createFromString(std::string_view data)
 		case 42:
 			obj->_secondaryHSVEnabled = GameToolbox::stoi(properties[i + 1]);
 			break;
-		case 43: {
-			auto hsv = GameToolbox::splitByDelimStringView(properties[i + 1], 'a');
-			obj->_mainHSV.h = GameToolbox::stof(hsv[0]);
-			obj->_mainHSV.s = GameToolbox::stof(hsv[1]);
-			obj->_mainHSV.v = GameToolbox::stof(hsv[2]);
-			obj->_mainHSV.sChecked = GameToolbox::stoi(hsv[3]);
-			obj->_mainHSV.vChecked = GameToolbox::stoi(hsv[4]);
-		}
-		break;
-		case 44: {
-			auto hsv = GameToolbox::splitByDelimStringView(properties[i + 1], 'a');
-			obj->_secondaryHSV.h = GameToolbox::stof(hsv[0]);
-			obj->_secondaryHSV.s = GameToolbox::stof(hsv[1]);
-			obj->_secondaryHSV.v = GameToolbox::stof(hsv[2]);
-			obj->_secondaryHSV.sChecked = GameToolbox::stoi(hsv[3]);
-			obj->_secondaryHSV.vChecked = GameToolbox::stoi(hsv[4]);
-		}
-		break;
+		case 43:
+			parseHSV(properties[i + 1], obj->_mainHSV);
+			break;
+		case 44:
+			parseHSV(properties[i + 1], obj->_secondaryHSV);
+			break;
 		case 45:
 			if (obj->_isTrigger)
 				dynamic_cast<EffectGameObject*>(obj)->_fadeIn = GameToolbox::stof(properties[i + 1]);
@@ -1491,13 +1537,8 @@ GameObject* GameObject::createFromString(std::string_view data)
 		case 49: {
 			if (obj->_isTrigger)
 			{
-				auto hsv = GameToolbox::splitByDelimStringView(properties[i + 1], 'a');
-				auto trigger = dynamic_cast<EffectGameObject*>(obj);
-				trigger->_hsv.h = GameToolbox::stof(hsv[0]);
-				trigger->_hsv.s = GameToolbox::stof(hsv[1]);
-				trigger->_hsv.v = GameToolbox::stof(hsv[2]);
-				trigger->_hsv.sChecked = GameToolbox::stoi(hsv[3]);
-				trigger->_hsv.vChecked = GameToolbox::stoi(hsv[4]);
+				if (auto* trigger = dynamic_cast<EffectGameObject*>(obj))
+					parseHSV(properties[i + 1], trigger->_hsv);
 			}
 			break;
 		}
@@ -1545,8 +1586,10 @@ GameObject* GameObject::createFromString(std::string_view data)
 			for (std::string_view groupStr : groups)
 			{
 				int group = GameToolbox::stoi(groupStr);
-				// TODO add groups in derived class
-				PlayLayer::getInstance()->_groups[group]._objects.push_back(obj);
+				if (auto* pl = PlayLayer::getInstance())
+					pl->_groups[group]._objects.push_back(obj);
+				else if (bgl)
+					bgl->_groups[group]._objects.push_back(obj);
 				obj->_groups.push_back(group);
 			}
 			break;
@@ -1692,6 +1735,35 @@ void GameObject::triggerActivated(PlayerObject* player)
 		_hasBeenActivatedP1 = true;
 	else
 		_hasBeenActivatedP2 = true;
+
+	// Pad/orb particle burst on bounce/click (object's bumpEffect / ringEffect).
+	if (_particle && _animateOnTrigger)
+	{
+		const bool isPad = _pObjectType == kGameObjectTypeYellowJumpPad || _pObjectType == kGameObjectTypeGravityPad ||
+						   _pObjectType == kGameObjectTypePinkJumpPad || _pObjectType == kGameObjectTypeRedJumpPad ||
+						   _pObjectType == kGameObjectTypeSpiderPad;
+		_particle->setPosition(getPosition() + ax::Vec2(0.f, isPad ? -2.f : 0.f));
+		_particle->setVisible(true);
+		if (!_particle->getParent())
+		{
+			ax::Node* parent = getParent();
+			if (!parent)
+				parent = bgl;
+			if (parent)
+				parent->addChild(_particle, 80);
+		}
+		_particle->setDuration(0.05f);
+		_particle->stopSystem();
+		_particle->resetSystem();
+		_particle->resumeEmissions();
+
+		// Stop emitting so duration -1 plists don't keep spraying forever.
+		_particle->runAction(Sequence::create(DelayTime::create(0.08f), CallFunc::create([this]() {
+												  if (_particle)
+													  _particle->stopSystem();
+											  }),
+											  nullptr));
+	}
 }
 
 bool GameObject::hasBeenActivatedByPlayer(PlayerObject* player)

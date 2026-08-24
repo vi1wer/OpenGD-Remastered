@@ -27,6 +27,8 @@ namespace LevelTools {
 	bool verifyLevelIntegrity(std::string_view levelData, int id);
 	
 	std::string getAudioFilename(int lid);
+	// Official soundtrack or custom Newgrounds song from GD's AppData folder.
+	std::string resolveAudioPath(GJGameLevel* level);
 	std::string getAudioTitle(int lid);
 	int getArtistForAudio(int lid);
 	std::string getNameForArtist(int artistId);

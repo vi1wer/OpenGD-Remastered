@@ -152,6 +152,24 @@ void PlayLayer::spawnCircle()
 	m_pHudLayer->addChild(cir, -1);
 }
 
+void PlayLayer::spawnBounceEffect(Vec2 pos, Color4B color, bool isOrb)
+{
+	Node* parent = _gameLayer ? static_cast<Node*>(_gameLayer) : this;
+	if (!parent)
+		parent = this;
+
+	// Official pad/orb flash: expanding additive ring at the object.
+	const float maxRadius = isOrb ? 55.f : 45.f;
+	if (auto* ring = CircleWave::create(0.35f, color, 4.f, maxRadius, true, false, 5.f))
+	{
+		ring->setPosition(pos);
+		parent->addChild(ring, 100);
+	}
+
+	// Particle burst comes from the object's bumpEffect/ringEffect in triggerActivated.
+	(void)isOrb;
+}
+
 void PlayLayer::showEndLayer()
 {
 	createLevelEnd();
@@ -426,33 +444,43 @@ bool PlayLayer::init(GJGameLevel* level)
 
 	this->_bottomGround = GroundLayer::create(_groundID);
 	this->_ceiling = GroundLayer::create(_groundID);
-	cameraFollow->addChild(this->_bottomGround, 1);
-	cameraFollow->addChild(this->_ceiling, 1);
+	if (this->_bottomGround)
+		cameraFollow->addChild(this->_bottomGround, 1);
+	if (this->_ceiling)
+		cameraFollow->addChild(this->_ceiling, 1);
 
-	this->_ceiling->setScaleY(-1);
-	_ceiling->setVisible(false);
-	_bottomGround->setPositionY(-cameraFollow->getPositionY() + 12);
-	_ceiling->setPositionY(winSize.height + _ceiling->_sprite->getTextureRect().size.height);
+	if (this->_ceiling)
+	{
+		this->_ceiling->setScaleY(-1);
+		_ceiling->setVisible(false);
+		if (_ceiling->_sprite)
+			_ceiling->setPositionY(winSize.height + _ceiling->_sprite->getTextureRect().size.height);
+	}
+	if (_bottomGround)
+		_bottomGround->setPositionY(-cameraFollow->getPositionY() + 12);
 
 	this->m_pBG = Sprite::create(GameToolbox::getTextureString(fmt::format("game_bg_{:02}_001.png", _bgID)));
 	if (!this->m_pBG)
 	{
 		this->m_pBG = Sprite::create(GameToolbox::getTextureString(fmt::format("game_bg_{:02}_001.png", 1)));
 	}
-	m_pBG->setStretchEnabled(false);
-	if (auto* tex = this->m_pBG->getTexture())
+	if (this->m_pBG)
 	{
-		const Texture2D::TexParams texParams = {
-			backend::SamplerFilter::LINEAR, backend::SamplerFilter::LINEAR,
-			backend::SamplerAddressMode::REPEAT, backend::SamplerAddressMode::REPEAT};
-		tex->setTexParameters(texParams);
-	}
-	this->m_pBG->setTextureRect(Rect(0, 0, 1024 * 5, 1024));
-	this->m_pBG->setPosition(winSize.x / 2, winSize.y / 4);
-	this->addChild(this->m_pBG, -100);
+		m_pBG->setStretchEnabled(false);
+		if (auto* tex = this->m_pBG->getTexture())
+		{
+			const Texture2D::TexParams texParams = {
+				backend::SamplerFilter::LINEAR, backend::SamplerFilter::LINEAR,
+				backend::SamplerAddressMode::REPEAT, backend::SamplerAddressMode::REPEAT};
+			tex->setTexParameters(texParams);
+		}
+		this->m_pBG->setTextureRect(Rect(0, 0, 1024 * 5, 1024));
+		this->m_pBG->setPosition(winSize.x / 2, winSize.y / 4);
+		this->addChild(this->m_pBG, -100);
 
-	if (this->_colorChannels.contains(1000))
-		this->m_pBG->setColor(colorForChannel(1000));
+		if (this->_colorChannels.contains(1000))
+			this->m_pBG->setColor(colorForChannel(1000));
+	}
 	this->_bottomGround->update(0);
 
 	if (_pObjects.size() != 0)
@@ -517,6 +545,28 @@ bool PlayLayer::init(GJGameLevel* level)
 	m_pHudLayer->addChild(m_pPercentage);
 
 	this->addChild(m_pHudLayer, 1000);
+
+	// World container so mirror portals can flip gameplay without flipping the HUD.
+	_gameLayer = Node::create();
+	_gameLayer->setName("gameLayer");
+	this->addChild(_gameLayer, 0);
+	{
+		std::vector<Node*> toReparent;
+		for (auto* child : getChildren())
+		{
+			if (child && child != m_pHudLayer && child != _gameLayer)
+				toReparent.push_back(child);
+		}
+		for (auto* child : toReparent)
+		{
+			const int z = child->getLocalZOrder();
+			child->retain();
+			child->removeFromParentAndCleanup(false);
+			_gameLayer->addChild(child, z);
+			child->release();
+		}
+	}
+
 	setupCoinHUD();
 	applyHudVisibility();
 
@@ -844,13 +894,16 @@ void PlayLayer::setupCoinHUD()
 		frame = (userCount > 0 && secretCount == 0) ? "GJ_coinsIcon2_001.png" : "GJ_coinsIcon_001.png";
 
 	const int count = static_cast<int>(_coinsCollected.size());
+	// Secret / user coin icons sit in the bottom-right corner of the HUD.
+	const float startX = winSize.width - 26.f - (count - 1) * 26.f;
+	const float coinY = 32.f;
 	for (int i = 0; i < count; i++)
 	{
 		auto* icon = Sprite::createWithSpriteFrameName(frame);
 		if (!icon)
 			continue;
-		icon->setScale(0.45f);
-		icon->setPosition({24.f + i * 22.f, winSize.height - 28.f});
+		icon->setScale(0.5f);
+		icon->setPosition({startX + i * 26.f, coinY});
 		m_pHudLayer->addChild(icon, 20);
 		_coinHUD.push_back(icon);
 	}
@@ -888,7 +941,7 @@ void PlayLayer::pickupCoin(GameObject* obj, PlayerObject* player)
 		auto* icon = _coinHUD[obj->_coinIndex];
 		icon->stopAllActions();
 		icon->setScale(0.2f);
-		icon->runAction(EaseElasticOut::create(ScaleTo::create(0.45f, 0.45f), 0.6f));
+		icon->runAction(EaseElasticOut::create(ScaleTo::create(0.45f, 0.5f), 0.6f));
 	}
 
 	const Vec2 pos = obj->getPosition();
@@ -1028,7 +1081,18 @@ void PlayLayer::updateCamera(float dt)
 	if (_player1->_currentGamemode == PlayerGamemodeCube)
 		_bottomGround->setPositionY(-cameraFollow->getPositionY() + 12);
 
-	m_pHudLayer->setPosition(this->m_obCamPos);
+	if (m_pHudLayer)
+		m_pHudLayer->setPosition(this->m_obCamPos);
+
+	// Animate mirror portal: slide objects across, flip at midpoint (like official GD).
+	const float mirrorTarget = _isMirror ? 1.f : 0.f;
+	const float mirrorStep = (dt / 60.f) / kMirrorAnimDuration;
+	if (_mirrorVisual < mirrorTarget)
+		_mirrorVisual = std::min(mirrorTarget, _mirrorVisual + mirrorStep);
+	else if (_mirrorVisual > mirrorTarget)
+		_mirrorVisual = std::max(mirrorTarget, _mirrorVisual - mirrorStep);
+
+	applyMirrorVisual(winSize.width);
 }
 
 float PlayLayer::getRelativeMod(Vec2 pos, float v1, float v2, float v3)
@@ -1409,7 +1473,8 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 				if (earlyType == kGameObjectTypeCubePortal || earlyType == kGameObjectTypeShipPortal ||
 					earlyType == kGameObjectTypeBallPortal || earlyType == kGameObjectTypeUfoPortal ||
 					earlyType == kGameObjectTypeWavePortal || earlyType == kGameObjectTypeRobotPortal ||
-					earlyType == kGameObjectTypeSpiderPortal || earlyType == kGameObjectTypeSwingPortal)
+					earlyType == kGameObjectTypeSpiderPortal || earlyType == kGameObjectTypeSwingPortal ||
+					earlyType == kGameObjectTypeInverseMirrorPortal || earlyType == kGameObjectTypeNormalMirrorPortal)
 				{
 					if (obj->hasBeenActivatedByPlayer(player))
 						continue;
@@ -1425,6 +1490,14 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 						player->setPortalObject(obj);
 						switch (earlyType)
 						{
+						case kGameObjectTypeInverseMirrorPortal:
+							obj->triggerActivated(player);
+							setMirror(true);
+							break;
+						case kGameObjectTypeNormalMirrorPortal:
+							obj->triggerActivated(player);
+							setMirror(false);
+							break;
 						case kGameObjectTypeShipPortal:
 							changeGameMode(obj, player, PlayerGamemodeShip);
 							break;
@@ -1623,7 +1696,8 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							player->setPortalP(obj->getPosition());
 							player->setPortalObject(obj);
 							obj->triggerActivated(player);
-							player->propellPlayer(1);
+							spawnBounceEffect(obj->getPosition(), Color4B(255, 255, 0, 255), false);
+							player->propellPlayer(1, Color4B(255, 255, 0, 255));
 							player->_touchedPadObject = obj;
 							break;
 
@@ -1635,7 +1709,8 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							player->setPortalP(pos);
 							player->setPortalObject(obj);
 							obj->triggerActivated(player);
-							player->propellPlayer(0.8);
+							spawnBounceEffect(obj->getPosition(), Color4B(0, 255, 255, 255), false);
+							player->propellPlayer(0.8, Color4B(0, 255, 255, 255));
 							player->_touchedPadObject = obj;
 							changeGravity(!player->isGravityFlipped());
 							break;
@@ -1645,7 +1720,8 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							player->setPortalP(obj->getPosition());
 							player->setPortalObject(obj);
 							obj->triggerActivated(player);
-							player->propellPlayer(0.65);
+							spawnBounceEffect(obj->getPosition(), Color4B(255, 0, 255, 255), false);
+							player->propellPlayer(0.65, Color4B(255, 0, 255, 255));
 							player->_touchedPadObject = obj;
 							break;
 
@@ -1653,7 +1729,8 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							player->setPortalP(obj->getPosition());
 							player->setPortalObject(obj);
 							obj->triggerActivated(player);
-							player->propellPlayer(1.25);
+							spawnBounceEffect(obj->getPosition(), Color4B(255, 40, 40, 255), false);
+							player->propellPlayer(1.25, Color4B(255, 40, 40, 255));
 							player->_touchedPadObject = obj;
 							break;
 
@@ -1679,6 +1756,9 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							player->setPortalObject(obj);
 
 							player->setTouchedRing(obj);
+							// Holding through a jump clears _queuedHold; restore it so orbs still fire.
+							if (player->m_bIsHolding)
+								player->_queuedHold = true;
 
 							player->ringJump(obj);
 							if (obj->getGameObjectType() == kGameObjectTypeCustomRing &&
@@ -1913,7 +1993,9 @@ void PlayLayer::resetLevel()
 	_itemCounts.clear();
 	_shakeTime = 0.f;
 	_shakeStrength = 0.f;
-	setMirror(false);
+	_isMirror = false;
+	_mirrorVisual = 0.f;
+	applyMirrorVisual(dir->getWinSize().width);
 	if (_effectManager)
 	{
 		_effectManager->_groupActions.clear();
@@ -1996,7 +2078,7 @@ void PlayLayer::resetLevel()
 		float musicVol = 0.1f;
 		if (auto* gm = GameManager::getInstance())
 			musicVol *= gm->getMusicVolume();
-		_musicAudioId = AudioEngine::play2d(LevelTools::getAudioFilename(getLevel()->_musicID), false, musicVol);
+		_musicAudioId = AudioEngine::play2d(LevelTools::resolveAudioPath(getLevel()), false, musicVol);
 		AudioEngine::setCurrentTime(_musicAudioId, _levelSettings.songOffset);
 	}
 
@@ -2468,11 +2550,41 @@ void PlayLayer::changeGravity(bool gravityFlipped)
 
 void PlayLayer::setMirror(bool mirror)
 {
+	if (_isMirror == mirror)
+		return;
+
 	_isMirror = mirror;
-	if (cameraFollow)
-		cameraFollow->setScaleX(mirror ? -1.f : 1.f);
-	if (m_pBG)
-		m_pBG->setScaleX(mirror ? -1.f : 1.f);
+	// Visual tween runs in updateCamera → applyMirrorVisual.
+}
+
+void PlayLayer::applyMirrorVisual(float screenWidth)
+{
+	if (!_gameLayer)
+		return;
+
+	// Ease-in-out (smoothstep), then a horizontal whoosh like official GD:
+	// slide off-screen → flip → slide in from the other side (~0.5s).
+	const float t = _mirrorVisual;
+	const float te = t * t * (3.f - 2.f * t);
+	const float centerX = m_obCamPos.x + screenWidth * 0.5f;
+	const bool flipped = te >= 0.5f;
+
+	_gameLayer->setScaleX(flipped ? -1.f : 1.f);
+
+	if (!flipped)
+	{
+		// First half: leave normal pose, slide toward +X
+		const float u = te * 2.f;
+		const float ease = u * u * (3.f - 2.f * u);
+		_gameLayer->setPositionX(ease * screenWidth);
+	}
+	else
+	{
+		// Second half: enter mirrored pose from the opposite side
+		const float u = (te - 0.5f) * 2.f;
+		const float ease = u * u * (3.f - 2.f * u);
+		_gameLayer->setPositionX(2.f * centerX + screenWidth * (1.f - ease));
+	}
 }
 
 GameObject* PlayLayer::findTeleportDestination(GameObject* src)

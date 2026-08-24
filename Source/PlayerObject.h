@@ -249,7 +249,7 @@ class PlayerObject : public GameObject
 		m_playerSpeed = v;
 	}
 
-	void propellPlayer(double force);
+	void propellPlayer(double force, ax::Color4B effectColor = ax::Color4B(255, 255, 0, 255));
 
 	void setTouchedRing(GameObject* obj);
 	void ringJump(GameObject* obj);

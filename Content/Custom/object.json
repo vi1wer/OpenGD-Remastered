@@ -11691,7 +11691,7 @@
         "default_secondary_channel": -1,
         "default_z_layer": 5,
         "default_z_order": 2,
-        "object_type": 11,
+        "object_type": 32,
         "texture_name": "dropRing_01_001.png"
     },
     "1331": {

@@ -44,6 +44,7 @@
 #include "GameToolbox/network.h"
 #include "GameToolbox/nodes.h"
 #include "GameToolbox/conv.h"
+#include "CustomSongWidget.h"
 
 USING_NS_AX;
 
@@ -124,6 +125,32 @@ bool LevelInfoLayer::init(GJGameLevel* level)
 		starCount->setPosition({ diff->getPositionX() - 6, star->getPositionY() });
 		this->addChild(starCount);
 	}
+
+	// User coins sit under the difficulty rating.
+	if (level->_coins > 0)
+	{
+		const float baseY = diff->getPositionY() - (level->_stars > 0 ? 58.f : 42.f);
+		for (int i = 0; i < level->_coins && i < 3; i++)
+		{
+			float coinX = diff->getPositionX();
+			if (level->_coins == 2)
+				coinX += (i == 0 ? -8.f : 8.f);
+			else if (level->_coins >= 3)
+				coinX += (i - 1) * 12.f;
+
+			auto* coin = Sprite::createWithSpriteFrameName("usercoin_small01_001.png");
+			if (!coin)
+				continue;
+			coin->setPosition({ coinX, baseY });
+			coin->setScale(0.9f);
+			if (level->_verifiedCoins)
+				coin->setColor({ 165, 165, 165 });
+			else
+				coin->setColor({ 165, 113, 48 });
+			this->addChild(coin);
+		}
+	}
+
 	auto downIcon = Sprite::createWithSpriteFrameName("GJ_downloadsIcon_001.png");
 	downIcon->setPosition({ winSize.width / 2 + 90.5f, winSize.height / 2 + 90 });
 	this->addChild(downIcon);
@@ -158,7 +185,7 @@ bool LevelInfoLayer::init(GJGameLevel* level)
 	auto menu = Menu::create();
 	menu->setPosition(0, 0);
 
-	playBtn = MenuItemSpriteExtra::create(Sprite::createWithSpriteFrameName("GJ_playBtn2_001.png"), [&](Node*) {
+	playBtn = MenuItemSpriteExtra::create(Sprite::createWithSpriteFrameName("GJ_playBtn2_001.png"), [this](Node*) {
 		AudioEngine::stopAll();
 		AudioEngine::play2d("playSound_01.ogg", false, 0.5f);
 		Director::getInstance()->pushScene(ax::TransitionFade::create(0.5f, PlayLayer::scene(_level)));
@@ -180,9 +207,9 @@ bool LevelInfoLayer::init(GJGameLevel* level)
 	this->addChild(loading);
 	this->addChild(menu);
 
-	// Normal Progressbar
+	// Normal Progressbar (raised to leave room for the song widget)
 	auto normalBar = ax::Sprite::create(GameToolbox::getTextureString("GJ_progressBar_001.png"));
-	normalBar->setPosition({winSize.width / 2, 78.0});
+	normalBar->setPosition({winSize.width / 2, 128.0});
 	normalBar->setColor({0, 0, 0});
 	normalBar->setOpacity(125);
 
@@ -248,8 +275,14 @@ bool LevelInfoLayer::init(GJGameLevel* level)
 
 	this->addChild(practiceLabel);
 
-	// Side Menu
+	_songWidget = CustomSongWidget::create(level);
+	_songWidget->setAnchorPoint({ 0.5f, 0.5f });
+	_songWidget->setPosition({ winSize.width / 2, 40.f });
+	this->addChild(_songWidget, 5);
+
+	// Side Menu (right column — keep clear of the song widget)
 	auto buttonsMenu = Menu::create();
+	buttonsMenu->setPosition(Vec2::ZERO);
 
 	auto deleteBtn = MenuItemSpriteExtra::create(Sprite::createWithSpriteFrameName("GJ_deleteBtn_001.png"), [](Node*) {
 		auto alert = AlertLayer::create("Delete Level", "Are you sure you want to delete this level?", "NO", "YES", NULL, NULL);
@@ -261,28 +294,26 @@ bool LevelInfoLayer::init(GJGameLevel* level)
 
 		alert->show();
 	});
+	deleteBtn->setPosition({ winSize.width - 32.f, winSize.height - 70.f });
 	buttonsMenu->addChild(deleteBtn);
-	deleteBtn->setPosition(Node::convertToNodeSpace(buttonsMenu->getPosition()));
-	deleteBtn->setPositionX(deleteBtn->getPositionX() - 30.f);
-	deleteBtn->setPositionY(deleteBtn->getPositionY() - 30.f);
 
 	auto updateBtn = MenuItemSpriteExtra::create("GJ_updateBtn_001.png", [](Node*) {});
-	updateBtn->setPosition(deleteBtn->getPositionX(), deleteBtn->getPositionY() - 50.f);
+	updateBtn->setPosition({ deleteBtn->getPositionX(), deleteBtn->getPositionY() - 50.f });
 	buttonsMenu->addChild(updateBtn);
 
 	auto infoBtn = MenuItemSpriteExtra::create("GJ_infoBtn_001.png", [level](Node*) { InfoLayer::create(level)->show(); });
-	infoBtn->setPosition(updateBtn->getPositionX(), updateBtn->getPositionY() - 50.f);
+	infoBtn->setPosition({ updateBtn->getPositionX(), updateBtn->getPositionY() - 50.f });
 	buttonsMenu->addChild(infoBtn);
 
 	auto rateDiffSprite = Sprite::createWithSpriteFrameName("GJ_rateDiffBtn_001.png");
 	auto rateDiffBtn = MenuItemSpriteExtra::create(rateDiffSprite, [level](Node*) { RateLevelLayer::create(level->_levelID)->show(); });
 	rateDiffBtn->setDisabledImage(Sprite::createWithSpriteFrameName("GJ_rateDiffBtn2_001.png"));
-	rateDiffBtn->setPosition(infoBtn->getPositionX(), infoBtn->getPositionY() - 50.f);
+	rateDiffBtn->setPosition({ infoBtn->getPositionX(), infoBtn->getPositionY() - 50.f });
 	buttonsMenu->addChild(rateDiffBtn);
 
 	auto likeBtn = MenuItemSpriteExtra::create(Sprite::createWithSpriteFrameName("GJ_likeBtn_001.png"), [](Node*) {});
 	likeBtn->setDisabledImage(Sprite::createWithSpriteFrameName("GJ_likeBtn2_001.png"));
-	likeBtn->setPosition(rateDiffBtn->getPositionX(), rateDiffBtn->getPositionY() - 50.f);
+	likeBtn->setPosition({ rateDiffBtn->getPositionX(), rateDiffBtn->getPositionY() - 50.f });
 	buttonsMenu->addChild(likeBtn);
 
 	this->addChild(buttonsMenu);
@@ -363,7 +394,9 @@ void LevelInfoLayer::onHttpRequestCompleted(ax::network::HttpClient* sender, ax:
 		}
 		delete _level;
 		_level = level;
-		_level->_musicID = _level->_officialSongID;
+		// Keep official soundtrack index only when there is no custom song.
+		if (_level->_songID <= 0)
+			_level->_musicID = _level->_officialSongID;
 
 		playBtn->setEnabled(true);
 		playBtn->setVisible(true);

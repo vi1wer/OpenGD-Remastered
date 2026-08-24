@@ -78,6 +78,7 @@ protected:
 	void createLevelEnd();
 
 	ax::Node* cameraFollow;
+	ax::Node* _gameLayer = nullptr;
 
 	ax::Sprite* m_pBG;
 	GroundLayer *_bottomGround, *_ceiling;
@@ -140,6 +141,9 @@ public:
 	float _lastAutoCheckpointX = -9999.f;
 	bool _freezeHitboxesOnDeath = false;
 	bool _isMirror = false;
+	float _mirrorVisual = 0.f; // 0 = normal, 1 = mirrored (animated)
+	static constexpr float kMirrorAnimDuration = 0.5f;
+	void applyMirrorVisual(float screenWidth);
 	float _shakeTime = 0.f;
 	float _shakeStrength = 0.f;
 	std::unordered_map<int, int> _itemCounts;
@@ -155,6 +159,7 @@ public:
 	void loadLevel(std::string_view levelStr);
 
 	void spawnCircle();
+	void spawnBounceEffect(ax::Vec2 pos, ax::Color4B color, bool isOrb);
 	void showEndLayer();
 	virtual void showCompleteText();
 

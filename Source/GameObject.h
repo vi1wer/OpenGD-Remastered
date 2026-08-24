@@ -244,6 +244,8 @@ class GameObject : public ax::Sprite, public ax::ActionTweenDelegate
 	static bool isTriggerID(int objectID);
 	static bool isSlopeFrame(std::string_view frame);
 	static bool isPassableDecorationFrame(std::string_view frame);
+	static bool isPixelArtFrame(std::string_view frame);
+	static bool isCollidableOutlineFrame(std::string_view frame);
 	static Hitbox resolveHitbox(int objectID);
 	void determineSlopeDirection();
 	bool slopeFloorTop() const { return _slopeFloorTop; }

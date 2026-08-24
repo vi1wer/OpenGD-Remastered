@@ -200,8 +200,12 @@ void BaseGameLayer::initBatchNodes()
 	//_particleBatchNode = ax::ParticleBatchNode::create("square.png", 30);
 	// addChild(_particleBatchNode);
 
-	_mainBatchNodeTexture = _mainBatchNodeT3->getTexture()->getPath();
-	_main2BatchNodeTexture = _main2BatchNode->getTexture()->getPath();
+	_mainBatchNodeTexture = _mainBatchNodeT3 && _mainBatchNodeT3->getTexture()
+								? _mainBatchNodeT3->getTexture()->getPath()
+								: std::string{};
+	_main2BatchNodeTexture = _main2BatchNode && _main2BatchNode->getTexture()
+								 ? _main2BatchNode->getTexture()->getPath()
+								 : std::string{};
 }
 
 bool BaseGameLayer::isObjectBlending(GameObject* obj)
