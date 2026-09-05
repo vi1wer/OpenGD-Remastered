@@ -17,10 +17,13 @@
 *************************************************************************/
 
 #include "conv.h"
+#include "GameObject.h"
 #include "external/fast_float.h"
 #include "math/MathUtil.h"
+#include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <utility>
 #include "log.h"
 
 bool _showDebugImgui = false;
@@ -171,6 +174,188 @@ const char* GameToolbox::levelLengthString(int len)
 	default:
 		return "Tiny";
 	}
+}
+
+namespace
+{
+	constexpr float kSpeedNormal = 311.58f;
+	constexpr float kSpeedSlow = 251.16f;
+	constexpr float kSpeedMedium = 387.42f;
+	constexpr float kSpeedFast = 468.0f;
+	constexpr float kSpeedSuperFast = 576.0f;
+
+	float speedFromIndex(int index)
+	{
+		switch (index)
+		{
+		case 1:
+			return kSpeedSlow;
+		case 2:
+			return kSpeedMedium;
+		case 3:
+			return kSpeedFast;
+		case 4:
+			return kSpeedSuperFast;
+		default:
+			return kSpeedNormal;
+		}
+	}
+
+	float speedFromPortalId(int id)
+	{
+		switch (id)
+		{
+		case 200:
+			return kSpeedSlow;
+		case 201:
+			return kSpeedNormal;
+		case 202:
+			return kSpeedMedium;
+		case 203:
+			return kSpeedFast;
+		case 1334:
+			return kSpeedSuperFast;
+		default:
+			return kSpeedNormal;
+		}
+	}
+
+	bool isSpeedPortalId(int id) { return id == 200 || id == 201 || id == 202 || id == 203 || id == 1334; }
+
+	int lengthCategoryFromSeconds(float seconds, bool platformer)
+	{
+		if (platformer)
+			return 5;
+		if (seconds < 10.f)
+			return 0;
+		if (seconds < 30.f)
+			return 1;
+		if (seconds < 60.f)
+			return 2;
+		if (seconds < 120.f)
+			return 3;
+		return 4;
+	}
+
+	float secondsFromXPos(float levelLength, float startSpeed, const std::vector<std::pair<float, float>>& portals)
+	{
+		float speed = startSpeed;
+		if (portals.empty())
+			return levelLength / speed;
+
+		float lastObjPos = 0.f;
+		float totalTime = 0.f;
+		for (const auto& [x, portalSpeed] : portals)
+		{
+			const float currentSegment = x - lastObjPos;
+			if (levelLength <= currentSegment)
+				break;
+
+			totalTime += currentSegment / speed;
+			speed = portalSpeed;
+			lastObjPos = x;
+		}
+		return (levelLength - lastObjPos) / speed + totalTime;
+	}
+
+	int parseHeaderKeyInt(std::string_view header, std::string_view key)
+	{
+		const size_t pos = header.find(key);
+		if (pos == std::string_view::npos)
+			return 0;
+		size_t cursor = pos + key.size();
+		if (cursor >= header.size() || header[cursor] != ',')
+			return 0;
+		++cursor;
+		while (cursor < header.size() && header[cursor] == ' ')
+			++cursor;
+		const size_t start = cursor;
+		while (cursor < header.size() && header[cursor] != ',')
+			++cursor;
+		if (start == cursor)
+			return 0;
+		return GameToolbox::stoi(header.substr(start, cursor - start));
+	}
+} // namespace
+
+float GameToolbox::calculateLevelLengthSeconds(int startSpeed, const std::vector<GameObject*>& objects)
+{
+	float furthestX = 0.f;
+	std::vector<std::pair<float, float>> portals;
+	portals.reserve(objects.size());
+
+	for (GameObject* obj : objects)
+	{
+		if (!obj)
+			continue;
+
+		const float x = obj->getPositionX();
+		furthestX = std::max(furthestX, x);
+
+		const int id = obj->getID();
+		if (isSpeedPortalId(id))
+			portals.emplace_back(x, speedFromPortalId(id));
+	}
+
+	std::sort(portals.begin(), portals.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+	return secondsFromXPos(furthestX, speedFromIndex(startSpeed), portals);
+}
+
+int GameToolbox::calculateLevelLengthCategory(int startSpeed, bool platformer, const std::vector<GameObject*>& objects)
+{
+	if (platformer)
+		return 5;
+	return lengthCategoryFromSeconds(calculateLevelLengthSeconds(startSpeed, objects), false);
+}
+
+int GameToolbox::calculateLevelLengthCategoryFromString(std::string_view levelString)
+{
+	if (levelString.empty())
+		return 0;
+
+	const auto parts = GameToolbox::splitByDelimStringView(levelString, ';');
+	if (parts.empty())
+		return 0;
+
+	const std::string_view header = parts[0];
+	const int startSpeed = parseHeaderKeyInt(header, "kA4");
+	const bool platformer = parseHeaderKeyInt(header, "kA22") != 0;
+	if (platformer)
+		return 5;
+
+	float furthestX = 0.f;
+	std::vector<std::pair<float, float>> portals;
+
+	for (size_t partIndex = 1; partIndex < parts.size(); ++partIndex)
+	{
+		const std::string_view objectData = parts[partIndex];
+		if (objectData.empty())
+			continue;
+
+		const auto props = GameToolbox::splitByDelimStringView(objectData, ',');
+		if (props.size() < 2)
+			continue;
+
+		const int id = GameToolbox::stoi(props[1]);
+		float x = 0.f;
+		bool portalChecked = true;
+		for (size_t i = 0; i + 1 < props.size(); i += 2)
+		{
+			const int key = GameToolbox::stoi(props[i]);
+			if (key == 2)
+				x = GameToolbox::stof(props[i + 1]);
+			else if (key == 13)
+				portalChecked = GameToolbox::stoi(props[i + 1]) != 0;
+		}
+
+		furthestX = std::max(furthestX, x);
+		if (portalChecked && isSpeedPortalId(id))
+			portals.emplace_back(x, speedFromPortalId(id));
+	}
+
+	std::sort(portals.begin(), portals.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+	const float seconds = secondsFromXPos(furthestX, speedFromIndex(startSpeed), portals);
+	return lengthCategoryFromSeconds(seconds, false);
 }
 
 std::string GameToolbox::xorCipher(const std::string& message, const std::string& key)

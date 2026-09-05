@@ -40,11 +40,13 @@ public:
 	PlayerObject* player;
 	ax::Vec2 startPos;
 	GroundLayer* groundLayer;
-	ax::Sprite* bgSpr;
-	ax::Menu* bgSprites;
-	float bgStartPos;
-	float sep;
-	float bsizeX;
+	ax::Sprite* bgSpr = nullptr;
+	ax::Node* bgSprites = nullptr;
+	float bgStartPos = 0.f;
+	float sep = 0.3f;
+	float bsizeX = 0.f;
+	float _bgTileW = 2048.f;
+	float _bgTileH = 1024.f;
 	float _jumpTimer = 0.f;
 	// Same floor/ceiling as PlayLayer (camera Y = 0, cameraYCenter = 240).
 	float _groundY = 105.f;
@@ -67,6 +69,8 @@ public:
 	void renderRect(ax::Rect rect, ax::Color4B col);
 
 
+	void onEnter() override;
+	void updateForWinSize();
 	static ax::Scene* scene();
 	static MenuGameLayer* create();
 	bool init();

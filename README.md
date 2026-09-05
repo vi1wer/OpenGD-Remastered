@@ -8,7 +8,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows-blue)
 ![license](https://img.shields.io/badge/license-GPL--3.0-blue)
-![version](https://img.shields.io/badge/version-1.1.0-green)
+![version](https://img.shields.io/badge/version-1.2.0-green)
 
 </div>
 
@@ -18,7 +18,7 @@ OpenGD Remastered continues the open-source Geometry Dash client started by the 
 
 Powered by [axmol](https://github.com/axmolengine/axmol).
 
-**Version 1.1.0** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 1.2.0** — see [CHANGELOG.md](CHANGELOG.md).
 
 ## What's new vs upstream OpenGD
 
@@ -31,16 +31,17 @@ Powered by [axmol](https://github.com/axmolengine/axmol).
 - Official level select page colors (`LevelSelectLayer::colorForPage` / `GameToolbox::colorForIdx`)
 - Broader object support and main-level rating icons
 - Debug options (hitboxes, progress overlays, and related toggles)
+- **1.2:** Level Settings, editor playtest dual/solo, window resize fixes, dual ceiling bounds
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ## Status
 
-Playable on Windows for local / official-style levels. Not a full Geometry Dash 2.2 clone — online features and some advanced systems are still incomplete.
+Playable on Windows for local / official-style levels. Editor is a **preview** (Level Settings + playtest); not a full Geometry Dash 2.2 clone — online features and some advanced systems are still incomplete.
 
 ## Requirements
 
-- Windows (primary target for 1.0)
+- Windows (primary target for 1.2)
 - CMake 3.20+
 - C++20 compiler (MSVC / VS 2022 recommended)
 - [axmol](https://github.com/axmolengine/axmol) (`AX_ROOT`)

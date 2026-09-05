@@ -286,6 +286,8 @@ Hitbox GameObject::resolveObjectHitbox(int objectID, GameObject* obj)
 			case kGameObjectTypeRobotPortal:
 			case kGameObjectTypeSpiderPortal:
 			case kGameObjectTypeSwingPortal:
+			case kGameObjectTypeDualPortal:
+			case kGameObjectTypeSoloPortal:
 				hb = {86.f, 34.f, -17.f, -43.f};
 				break;
 			default:
@@ -1234,7 +1236,7 @@ void GameObject::update()
 		setScaleY(_startScale.y);
 	}
 
-	auto bgl = PlayLayer::getInstance();
+	auto bgl = BaseGameLayer::getInstance();
 	if (!bgl)
 		return;
 

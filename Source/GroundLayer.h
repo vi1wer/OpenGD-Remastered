@@ -40,8 +40,15 @@ private:
 	AX_SYNTHESIZE(float, m_fSpeed, Speed)
 
 public:
-	ax::Sprite* _sprite;
+	ax::Sprite* _sprite = nullptr;
+	int _groundID = 1;
+	// Menu / level-select grounds must not pull colors from PlayLayer/Editor.
+	bool _followPlayLayerColors = true;
 	void update(float dt) override;
 	bool init(int groundID);
+	void setGroundID(int groundID);
+	int getGroundID() const { return _groundID; }
+	void resetMenuAppearance();
+	void updateForWinSize();
 	static GroundLayer* create(int groundID);
 };

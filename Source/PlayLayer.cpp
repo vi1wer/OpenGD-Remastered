@@ -1077,8 +1077,8 @@ void PlayLayer::updateCamera(float dt)
 	cameraFollow->setPosition(m_obCamPos);
 	const bool flying = _player1->isFlying() || _player1->_currentGamemode == PlayerGamemodeBall;
 	if (_ceiling)
-		_ceiling->setVisible(flying);
-	if (_player1->_currentGamemode == PlayerGamemodeCube)
+		_ceiling->setVisible(flying || _isDualMode);
+	if (_player1->_currentGamemode == PlayerGamemodeCube && !_isDualMode)
 		_bottomGround->setPositionY(-cameraFollow->getPositionY() + 12);
 
 	if (m_pHudLayer)
@@ -1282,6 +1282,9 @@ void PlayLayer::setDualMode(bool dual)
 
 	if (dual)
 	{
+		if (m_fCameraYCenter <= 0.f)
+			m_fCameraYCenter = 240.0f;
+
 		_player2->setPosition(_player1->getPosition());
 		_player2->setVisible(true);
 		_player2->setActive(true);
@@ -1291,12 +1294,42 @@ void PlayLayer::setDualMode(bool dual)
 		_player2->toggleMini(_player1->_mini);
 		_player2->m_dXVel = _player1->m_dXVel;
 		_player2->setPlayerSpeed(_player1->getPlayerSpeed());
+
+		if (_player1->_currentGamemode == PlayerGamemodeBall)
+		{
+			if (_bottomGround)
+				_bottomGround->setPositionY(-38.f);
+			if (_ceiling)
+				_ceiling->setPositionY(358.f);
+			tweenBottomGround(-38);
+			tweenCeiling(358);
+		}
+		else
+		{
+			if (_bottomGround)
+				_bottomGround->setPositionY(-68.f);
+			if (_ceiling)
+				_ceiling->setPositionY(388.f);
+			tweenBottomGround(-68);
+			tweenCeiling(388);
+		}
+		if (_ceiling)
+			_ceiling->setVisible(true);
+
+		// Same as official GD: spawn on P1 and let flipped gravity carry P2 up to the ceiling.
+		_player2->setIsOnGround(false);
+		_player2->setYVel(0.f);
 	}
 	else
 	{
 		_player2->setVisible(false);
 		_player2->setActive(false);
 		_player2->flipGravity(false);
+		const bool keepFlyBox = _player1 && (_player1->isFlying() || _player1->_currentGamemode == PlayerGamemodeBall);
+		if (_ceiling && !keepFlyBox)
+			_ceiling->setVisible(false);
+		if (!keepFlyBox && _bottomGround && cameraFollow)
+			_bottomGround->setPositionY(-cameraFollow->getPositionY() + 12);
 	}
 }
 
@@ -1332,8 +1365,15 @@ void PlayLayer::changeGameMode(GameObject* obj, PlayerObject* player, PlayerGame
 	case PlayerGamemodeRobot:
 	case PlayerGamemodeSpider:
 		if (_ceiling)
-			_ceiling->setVisible(false);
-		if (_bottomGround && cameraFollow)
+			_ceiling->setVisible(_isDualMode);
+		if (_isDualMode)
+		{
+			if (_bottomGround)
+				_bottomGround->setPositionY(-68.f);
+			if (_ceiling)
+				_ceiling->setPositionY(388.f);
+		}
+		else if (_bottomGround && cameraFollow)
 			_bottomGround->setPositionY(-cameraFollow->getPositionY() + 12);
 		break;
 	default:
@@ -1387,6 +1427,22 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 	{
 		this->destroyPlayer(player);
 		return;
+	}
+
+	if (_isDualMode && player->isGroundedMode())
+	{
+		const float shift = m_fCameraYCenter > 0.f ? (m_fCameraYCenter - 240.f) : 0.f;
+		const float dualCeil = (player->_mini ? 249.f : 255.f) + shift;
+		if (player->getPositionY() > dualCeil)
+		{
+			if (!player->isGravityFlipped())
+			{
+				this->destroyPlayer(player);
+				return;
+			}
+			player->setPositionY(dualCeil);
+			player->hitGround(true);
+		}
 	}
 
 	if (player->isFlying() || player->_currentGamemode == PlayerGamemodeBall)
@@ -1474,7 +1530,8 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 					earlyType == kGameObjectTypeBallPortal || earlyType == kGameObjectTypeUfoPortal ||
 					earlyType == kGameObjectTypeWavePortal || earlyType == kGameObjectTypeRobotPortal ||
 					earlyType == kGameObjectTypeSpiderPortal || earlyType == kGameObjectTypeSwingPortal ||
-					earlyType == kGameObjectTypeInverseMirrorPortal || earlyType == kGameObjectTypeNormalMirrorPortal)
+					earlyType == kGameObjectTypeInverseMirrorPortal || earlyType == kGameObjectTypeNormalMirrorPortal ||
+					earlyType == kGameObjectTypeDualPortal || earlyType == kGameObjectTypeSoloPortal)
 				{
 					if (obj->hasBeenActivatedByPlayer(player))
 						continue;
@@ -1521,6 +1578,14 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 							break;
 						case kGameObjectTypeSwingPortal:
 							changeGameMode(obj, player, PlayerGamemodeSwing);
+							break;
+						case kGameObjectTypeDualPortal:
+							obj->triggerActivated(player);
+							setDualMode(true);
+							break;
+						case kGameObjectTypeSoloPortal:
+							obj->triggerActivated(player);
+							setDualMode(false);
 							break;
 						default:
 							break;

@@ -45,4 +45,5 @@ public:
 
 	static ax::Color3B colorForPage(int page);
 	void applyPageColor(int page, bool animate);
+	void updateForWinSize();
 };

@@ -55,8 +55,18 @@ out
 
 Resources/*
 !Resources/Custom/
-Content*
-!Content/Custom
+# Keep Content/Custom shippable; ignore other Content trees and scratch dumps
+Content/*
+!Content/Custom/
+!Content/Custom/**
+
+# Scratch / reverse dumps — do not ship in repo or release zip
+Content/Custom/*_raw.txt
+Content/Custom/*_dump.txt
+Content/Custom/sneak_peek*
+Content/Custom/create_menu_ids_raw.txt
+Content/Custom/blocks_2.2_raw.txt
+Content/Custom/level_settings_init_dump.txt
 
 CMakeCache.txt
 
@@ -66,6 +76,8 @@ cmake-build-*
 # Local engine / build outputs / logs (not shipped in the repo)
 /axmol/
 /release/
+/_tmp_sprites/
+.cursor/
 *.log
 crash_stderr.txt
 crash_stdout.txt

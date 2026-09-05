@@ -25,6 +25,8 @@
 #include <vector>
 #include "GDHSV.h"
 
+class GameObject;
+
 namespace GameToolbox
 {
 ax::Color3B colorForIdx(int col);
@@ -35,6 +37,9 @@ ax::Color3B hsvToRgb(const ax::HSV& hsv);
 float stof(const std::string_view str);
 int stoi(const std::string_view str);
 const char* levelLengthString(int len);
+int calculateLevelLengthCategory(int startSpeed, bool platformer, const std::vector<GameObject*>& objects);
+int calculateLevelLengthCategoryFromString(std::string_view levelString);
+float calculateLevelLengthSeconds(int startSpeed, const std::vector<GameObject*>& objects);
 std::vector<std::string> splitByDelim(const std::string& s, char delim);
 std::vector<std::string_view> splitByDelimStringView(std::string_view str, char delim);
 ax::BlendFunc getBlending();

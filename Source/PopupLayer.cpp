@@ -30,20 +30,40 @@
 #include "2d/ActionInterval.h"
 #include "2d/ActionInstant.h"
 #include "EventKeyboard.h"
+#include "LevelEditorLayer.h"
+#include "BaseGameLayer.h"
 
 USING_NS_AX;
 
 void PopupLayer::show(Transitions transitions)
 {
-	//robtops system to add to highest z
-	auto scene = Director::getInstance()->getRunningScene();
-	int z = GameToolbox::getHighestChildZ(scene);
-	if(z <= 104)
+	Node* parent = Director::getInstance()->getRunningScene();
+	int z = GameToolbox::getHighestChildZ(parent);
+	if (z <= 104)
 		z = 105;
 	else
 		z++;
-	
-	scene->addChild(this, z);
+
+	// Editor pans the default camera + HUD together. Scene-space popups stay at
+	// world origin, so they appear "at the start of the level". Parent to HUD.
+	if (auto* base = BaseGameLayer::getInstance())
+	{
+		if (auto* editor = dynamic_cast<LevelEditorLayer*>(base))
+		{
+			if (auto* hud = editor->hudLayer())
+			{
+				parent = hud;
+				z = GameToolbox::getHighestChildZ(hud);
+				if (z < 5000)
+					z = 5000;
+				else
+					z++;
+			}
+		}
+	}
+
+	removeFromParent();
+	parent->addChild(this, z);
 	this->setOpacity(0);
 
 	switch (transitions)
@@ -96,9 +116,41 @@ bool PopupLayer::init()
 
 void PopupLayer::showOnLayer(ax::Node* node, Transitions transition)
 {
+	if (!node)
+	{
+		show(transition);
+		return;
+	}
+
 	removeFromParent();
-	node->addChild(this);
-	show(transition);
+	int z = GameToolbox::getHighestChildZ(node);
+	if (z < 100)
+		z = 100;
+	else
+		z++;
+	node->addChild(this, z);
+	this->setOpacity(0);
+
+	switch (transition)
+	{
+		case kNone:
+			break;
+		default:
+			this->_mainLayer->setScale(0.1f);
+			this->_mainLayer->runAction(EaseElasticOut::create(ScaleTo::create(0.5f, 1.0f), 0.6f));
+	}
+	this->runAction(FadeTo::create(0.14, 150));
+
+	GameToolbox::onKeyDown(true, this, [this](EventKeyboard::KeyCode code, Event*)
+	{
+		switch (code)
+		{
+			case EventKeyboard::KeyCode::KEY_BACK:
+				close();
+			default:
+				break;
+		}
+	});
 }
 
 

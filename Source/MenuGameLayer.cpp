@@ -21,6 +21,7 @@
 #include "GroundLayer.h"
 #include "GameManager.h"
 #include "2d/Menu.h"
+#include "2d/Node.h"
 #include "PlayerObject.h"
 #include "base/Director.h"
 #include "EventListenerTouch.h"
@@ -54,6 +55,14 @@ Scene* MenuGameLayer::scene() {
 	return scene;
 }
 
+void MenuGameLayer::onEnter()
+{
+	Layer::onEnter();
+	// Editor/play can leave BaseGameLayer colors/textures on shared ground look — restore menu default.
+	if (groundLayer)
+		groundLayer->resetMenuAppearance();
+}
+
 bool MenuGameLayer::init(){
 	if (!Layer::init()) return false;
 
@@ -63,66 +72,46 @@ bool MenuGameLayer::init(){
 	const auto& winSize = dir->getWinSize();
 
 	groundLayer = GroundLayer::create(1);
-	// PlayLayer places the ground at +12 when the camera is at Y = 0 so a
-	// player at y = 105 stands on the floor line.
-	groundLayer->setPositionY(12.f);
-	
-	addChild(groundLayer, 2);
+	if (groundLayer)
+	{
+		groundLayer->_followPlayLayerColors = false;
+		// PlayLayer places the ground at +12 when the camera is at Y = 0 so a
+		// player at y = 105 stands on the floor line.
+		groundLayer->setPositionY(12.f);
+		addChild(groundLayer, 2);
+	}
 
 	const Texture2D::TexParams texParams = {
-		backend::SamplerFilter::LINEAR, 
-		backend::SamplerFilter::LINEAR, 
-		backend::SamplerAddressMode::REPEAT, 
+		backend::SamplerFilter::LINEAR,
+		backend::SamplerFilter::LINEAR,
+		backend::SamplerAddressMode::REPEAT,
 		backend::SamplerAddressMode::REPEAT
 	};
 
-	bgSprites = Menu::create();
+	// Fullscreen scrolling strip: tiles side-by-side, scaled to cover win height.
+	bgSprites = Node::create();
+	bgSprites->setAnchorPoint({0.f, 0.f});
+	addChild(bgSprites, -3);
 
-	// this->bgSpr = bg;
-	// this->bgSpr->getTexture()->setTexParameters(texParams);
-	// this->bgSpr->setTextureRect(Rect(0, 0, 2048, 1024));
-	// this->bgSpr->setPosition(winSize / 2);
-
-	for(int i = 0; i < 4; i++) {
-		auto gr = Sprite::create(GameToolbox::getTextureString("game_bg_01_001.png"));
+	for (int i = 0; i < 4; i++)
+	{
+		auto* gr = Sprite::create(GameToolbox::getTextureString("game_bg_01_001.png"));
+		if (!gr)
+			continue;
 		gr->setStretchEnabled(false);
-		gr->getTexture()->setTexParameters(texParams);
-		gr->setTextureRect(Rect(0, 0, 2048, 1024));
-		gr->setPosition(winSize / 2);
-		gr->setColor({ 0, 102, 255 });
-		// bg scale
-		gr->setScale(1.185f); // epic hardcore (please fix lmao)
-		bsizeX = gr->getContentSize().width;
-
-		this->bgSprites->addChild(gr);
+		if (auto* tex = gr->getTexture())
+			tex->setTexParameters(texParams);
+		_bgTileW = gr->getContentSize().width;
+		_bgTileH = gr->getContentSize().height;
+		gr->setTextureRect(Rect(0, 0, _bgTileW, _bgTileH));
+		gr->setAnchorPoint({0.f, 0.f});
+		gr->setPosition({_bgTileW * static_cast<float>(i), 0.f});
+		gr->setColor({0, 102, 255});
+		bgSprites->addChild(gr);
 	}
-	this->bgSprites->alignItemsHorizontallyWithPadding(0);
-	this->bgStartPos = bgSprites->getPositionX();
-	this->addChild(bgSprites, -3);
 	sep = 0.3f;
-	bgSprites->setScale(winSize.width / bgSprites->getContentSize().width);
-	bgSprites->setPositionY(0);
+	updateForWinSize();
 
-	//this is not how it works lol
-	// bgSprites->setColor(GameToolbox::randomColor3B());
-
-	// // this->addChild(this->bgSpr, -1);
-	
-	// bgSprites->runAction(
-	// 	 RepeatForever::create(
-	// 		 Sequence::create(
-	// 			 TintTo::create(4.0f, {255, 0, 0}),
-	// 			 TintTo::create(4.0f, {255, 255, 0}),
-	// 			 TintTo::create(4.0f, {0, 255, 0}),
-	// 			 TintTo::create(4.0f, {0, 255, 255}),
-	// 			 TintTo::create(4.0f, {0, 0, 255}),
-	// 			 TintTo::create(4.0f, {255, 0, 255}),
-	// 			 TintTo::create(4.0f, {255, 0, 0}),
-	// 			 nullptr
-	// 		 )
-	// 	 )
-	// );
-	
 	scheduleUpdate();
 
 	auto listener = EventListenerTouchOneByOne::create();
@@ -135,6 +124,22 @@ bool MenuGameLayer::init(){
 	this->resetPlayer(false);
 
 	return true;
+}
+
+void MenuGameLayer::updateForWinSize()
+{
+	const auto winSize = Director::getInstance()->getWinSize();
+	if (bgSprites && _bgTileH > 0.f)
+	{
+		// Fill height; keep aspect so tiles don't stretch. Extra width scrolls.
+		const float scale = winSize.height / _bgTileH;
+		bgSprites->setScale(scale);
+		bgSprites->setPosition({0.f, 0.f});
+		bsizeX = _bgTileW * scale;
+		bgStartPos = bgSprites->getPositionX();
+	}
+	if (groundLayer)
+		groundLayer->updateForWinSize();
 }
 void MenuGameLayer::spawnMenuPlayer()
 {
@@ -323,20 +328,19 @@ void MenuGameLayer::resetPlayer(bool touched)
 }
 
 void MenuGameLayer::processBackground(float delta) {
-	float xpos =  bgSprites->getPositionX();
-	if(this->bgStartPos - xpos < this->bsizeX) 
-	{
-		bgSprites->setPositionX(xpos - this->sep);
-	}
-	else 
-	{
-		bgSprites->setPositionX(xpos + this->bsizeX);
-	}
+	if (!bgSprites || bsizeX <= 0.f)
+		return;
+	float xpos = bgSprites->getPositionX() - sep;
+	if (xpos <= -bsizeX)
+		xpos += bsizeX;
+	bgSprites->setPositionX(xpos);
 }
 
 void MenuGameLayer::update(float delta) {
 	processBackground(delta);
 	processPlayerMovement(delta);
+	if (!groundLayer)
+		return;
 	if (player)
 		groundLayer->update(std::min(2.0f, delta * 60.0f) * player->getPlayerSpeed());
 	else

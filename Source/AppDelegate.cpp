@@ -28,10 +28,12 @@
 #include "ResourcesLoadingLayer.h"
 #include "external/constants.h"
 #include "GameToolbox/log.h"
+#include "GameToolbox/nodes.h"
 
 #include "platform/GLView.h"
 #include "base/Director.h"
 #include "base/EventDispatcher.h"
+#include "base/EventListenerCustom.h"
 
 #if defined(AX_PLATFORM_PC) || (AX_TARGET_PLATFORM == AX_PLATFORM_WASM)
 	#include "platform/GLViewImpl.h"
@@ -105,20 +107,6 @@ static void setupDesignResolution(GLView* glView)
 	glView->setDesignResolutionSize(designResolutionSize.width, designResolutionSize.height, resPolicy);
 }
 
-#ifdef AX_PLATFORM_PC
-static void onGLFWwindowSizeCallback(GLFWwindow*, int w, int h)
-{
-	auto director = Director::getInstance();
-	auto glView = director->getGLView();
-
-	glView->setFrameSize(w, h);
-	setupDesignResolution(glView);
-
-	director->getEventDispatcher()->dispatchCustomEvent(GLViewImpl::EVENT_WINDOW_RESIZED, nullptr);
-}
-#endif
-
-
 bool AppDelegate::applicationDidFinishLaunching()
 {
 
@@ -158,11 +146,17 @@ bool AppDelegate::applicationDidFinishLaunching()
 	setupDesignResolution(glView);
 
 #ifdef AX_PLATFORM_PC
-
+	// Keep 16:9 window shape, but never replace axmol's glfw size callback —
+	// that callback updates viewport/projection via handleWindowSize().
 	glfwSetWindowAspectRatio(static_cast<GLViewImpl*>(glView)->getWindow(), 16, 9);
 
-	glfwSetWindowSizeCallback(static_cast<GLViewImpl*>(glView)->getWindow(), onGLFWwindowSizeCallback);
-
+	auto* resizeListener = EventListenerCustom::create(GLViewImpl::EVENT_WINDOW_RESIZED, [](EventCustom*) {
+		auto* view = Director::getInstance()->getGLView();
+		if (view)
+			setupDesignResolution(view);
+		GameToolbox::applyWindowResize();
+	});
+	director->getEventDispatcher()->addEventListenerWithFixedPriority(resizeListener, 1);
 #endif
 
 	GameToolbox::log("APLICATION INIT");
@@ -182,7 +176,7 @@ bool AppDelegate::applicationDidFinishLaunching()
 	return true;
 }
 
-// This function will be called when the app is inactive. Note, when receiving a phone call it is invoked.
+// This function will be called when the app is inactive. Note, when calling a phone call it is invoked.
 void AppDelegate::applicationDidEnterBackground()
 {
 	Director::getInstance()->stopAnimation();
@@ -192,7 +186,7 @@ void AppDelegate::applicationDidEnterBackground()
 #endif
 }
 
-// this function will be called when the app is active again
+// This function will be called when the app is active again
 void AppDelegate::applicationWillEnterForeground()
 {
 	Director::getInstance()->startAnimation();

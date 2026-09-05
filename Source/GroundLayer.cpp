@@ -29,14 +29,16 @@ bool GroundLayer::init(int groundID)
 {
 	if (!Layer::init()) return false;
 
+	_groundID = groundID > 0 ? groundID : 1;
 	auto winSize = Director::getInstance()->getWinSize();
 
-	auto name = fmt::format("groundSquare_{:02}_001.png", groundID);
+	auto name = fmt::format("groundSquare_{:02}_001.png", _groundID);
 	this->_sprite = Sprite::create(GameToolbox::getTextureString(name));
 	if (!this->_sprite)
 	{
 		auto name2 = fmt::format("groundSquare_{:02}_001.png", 1);
 		this->_sprite = Sprite::create(GameToolbox::getTextureString(name2));
+		_groundID = 1;
 	}
 	if (!this->_sprite)
 		return false;
@@ -81,6 +83,65 @@ bool GroundLayer::init(int groundID)
 	return true;
 }
 
+void GroundLayer::setGroundID(int groundID)
+{
+	if (groundID < 1)
+		groundID = 1;
+	_groundID = groundID;
+	if (!_sprite)
+		return;
+
+	const auto winSize = Director::getInstance()->getWinSize();
+	auto name = fmt::format("groundSquare_{:02}_001.png", _groundID);
+	auto* tmp = Sprite::create(GameToolbox::getTextureString(name));
+	if (!tmp)
+	{
+		_groundID = 1;
+		tmp = Sprite::create(GameToolbox::getTextureString("groundSquare_01_001.png"));
+	}
+	if (!tmp || !tmp->getTexture())
+		return;
+
+	auto* tex = tmp->getTexture();
+	// Copy tex params on a per-use basis; do not leave menu sprites pointing at editor ground.
+	tex->setTexParameters(
+		{backend::SamplerFilter::NEAREST, backend::SamplerFilter::NEAREST, backend::SamplerAddressMode::REPEAT,
+		 backend::SamplerAddressMode::REPEAT});
+	_sprite->setTexture(tex);
+	m_fOneGroundSize = tmp->getContentSize().width;
+	_sprite->setTextureRect({0, 0, winSize.width + m_fOneGroundSize, tmp->getContentSize().height});
+}
+
+void GroundLayer::resetMenuAppearance()
+{
+	setGroundID(1);
+	if (_sprite)
+		_sprite->setColor({0, 102, 255});
+}
+
+void GroundLayer::updateForWinSize()
+{
+	if (!_sprite)
+		return;
+
+	const auto winSize = Director::getInstance()->getWinSize();
+	const float height = _sprite->getTextureRect().size.height;
+	_sprite->setTextureRect({0, 0, winSize.width + m_fOneGroundSize, height});
+
+	for (auto* child : getChildren())
+	{
+		if (child == _sprite)
+			continue;
+		auto* spr = dynamic_cast<Sprite*>(child);
+		if (!spr)
+			continue;
+		if (spr->isFlippedX())
+			spr->setPositionX(winSize.width);
+		else if (spr->getPositionY() > 40.f)
+			spr->setPositionX(winSize.width * 0.5f);
+	}
+}
+
 void GroundLayer::updateTweenAction(float value, std::string_view key)
 {
 	if (key == "y") setPositionY(value);
@@ -88,10 +149,17 @@ void GroundLayer::updateTweenAction(float value, std::string_view key)
 
 void GroundLayer::update(float dt)
 {
-	if (auto pl = BaseGameLayer::getInstance())
+	if (_followPlayLayerColors)
 	{
-		if (pl->_colorChannels.contains(1001)) _sprite->setColor(pl->colorForChannel(1001));
+		if (auto* pl = BaseGameLayer::getInstance())
+		{
+			if (pl->_colorChannels.contains(1001) && _sprite)
+				_sprite->setColor(pl->colorForChannel(1001));
+		}
 	}
+
+	if (!_sprite)
+		return;
 
 	this->_sprite->setPositionX(this->_sprite->getPositionX() - dt * this->m_fSpeed);
 

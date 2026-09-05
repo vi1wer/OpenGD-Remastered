@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.2.0 — 2026-09-05
+
+### Editor / Level Settings
+- Level Settings menu (gear): speed, mode, game type, song, options, BG / G / MG colors, save/load header keys
+- Editor playtest: dual / solo portals work; second player and ceiling bounds like in play
+- Local levels / Edit Level / My Levels wiring improvements
+- Broader 2.2 object / editor tab data (`EditorTabs22`, `blocks.json`)
+
+### Gameplay
+- Dual portal: ceiling boundary so the second player cannot fly off-screen; P2 rises with flipped gravity (no instant teleport)
+- Dual portal hitbox / activation polish in PlayLayer
+
+### UI / window
+- Window resize: viewport updates via axmol again (no broken GLFW override)
+- Fullscreen backgrounds, ground, and menu BG reflow on resize (no leftover black strips)
+- Menu / level-select ground colors no longer steal PlayLayer colors after leaving the editor
+
+### Project
+- Deploy to `release/OpenGD` after RelWithDebInfo builds
+- Release zip omits editor scratch dumps and temp sprite extracts
+
+### Known limitations
+- Still not full Geometry Dash 2.2 parity
+- Online / account features incomplete
+- Editor Edit Object / Group / Color / Special and some paste tools still Coming Soon
+- Level Settings MORE / Options are simplified vs official GD
+
+---
+
 ## 1.1.0 — 2026-08-24
 
 ### Gameplay

@@ -52,6 +52,8 @@ struct LevelSettings
 	int speed = 0;
 	float songOffset = 0.f;
 	int _groundID = 1, _bgID = 1;
+	int _mgID = 1;
+	int _fontID = 0;
 };
 
 struct GroupProperties
@@ -91,11 +93,11 @@ protected:
 	ax::SpriteBatchNode* _glowBatchNode;
 	ax::ParticleBatchNode* _particleBatchNode;
 
-	float _lastObjXPos;
+	float _lastObjXPos = 570.0f;
 	LevelSettings _levelSettings;
-	int _prevSection, _nextSection;
+	int _prevSection = 0, _nextSection = 0;
 
-	EffectManager* _effectManager;
+	EffectManager* _effectManager = nullptr;
 
 public:
 
@@ -104,7 +106,8 @@ public:
 	std::map<int, SpriteColor> _colorChannels, _originalColors;
 	std::map<int, GroupProperties> _groups;
 
-	PlayerObject* _player1, *_player2;
+	PlayerObject* _player1 = nullptr;
+	PlayerObject* _player2 = nullptr;
 
 protected:
     virtual void loadLevel();
@@ -126,6 +129,7 @@ public:
 	virtual bool isObjectBlending(GameObject* obj);
 	void attachGameObject(GameObject* obj);
 	void detachGameObject(GameObject* obj);
+	virtual void destroyPlayer(PlayerObject* player) {}
 
 	void processMoveActions(float dt);
 	void runMoveCommand(float duration, ax::Point offsetPos, int easeType, float easeAmt, int groupID,

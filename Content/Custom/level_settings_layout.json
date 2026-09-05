@@ -1,0 +1,908 @@
+{
+  "panel": {
+    "w": 455,
+    "h": 305
+  },
+  "timeline": [
+    "'GJ_square01.png' -> [305.0, 455.0, 0.5]",
+    "'goldFont.fnt' -> []",
+    "'bigFont.fnt' -> [0.8, 135.0]",
+    "'Select Color:' -> []",
+    "'bigFont.fnt' -> []",
+    "'BG:' -> [0.35]",
+    "'G:' -> []",
+    "'G2:' -> []",
+    "'Line:' -> []",
+    "'MG:' -> []",
+    "'MG2:' -> []",
+    "'bigFont.fnt' -> []",
+    "'More:' -> []",
+    "'GJ_colorBtn_001.png' -> []",
+    "'bigFont.fnt' -> [2.0, -22.0, 1.4, 2.5, 0.3, 18.0, -4.0, 3.0]",
+    "'GJ_colorBtn_001.png' -> []",
+    "'bigFont.fnt' -> [22.0, 2.0, 135.0]",
+    "'goldFont.fnt' -> []",
+    "'bigFont.fnt' -> [28.0]",
+    "'Game Type:' -> [0.7, 24.0, 0.55]",
+    "'GJ_button_04.png' -> []",
+    "'Classic' -> [-65.0]",
+    "'GJ_button_04.png' -> []",
+    "'Platformer' -> [65.0, 0.6, -32.0]",
+    "'BG:' -> []",
+    "'bgIcon_%02d_001.png' -> []",
+    "'goldFont.fnt' -> []",
+    "'G:' -> []",
+    "'gIcon_%02d_001.png' -> []",
+    "'goldFont.fnt' -> []",
+    "'MG:' -> []",
+    "'mgIcon_%02d_001.png' -> []",
+    "'GJ_button_04.png' -> []",
+    "'goldFont.fnt' -> []",
+    "'Font' -> [-70.0, 30.0]",
+    "'goldFont.fnt' -> []",
+    "'GJ_button_01.png' -> []",
+    "'OK' -> []",
+    "'Disable' -> [-30.0]",
+    "'mera' -> [8.0]",
+    "'bigFont.fnt' -> [0.7]",
+    "'goldFont.fnt' -> []",
+    "'Target Order' -> [40.0]",
+    "'square02b_small.png' -> [50.0]",
+    "'bigFont.fnt' -> []",
+    "'Order' -> [0.6, 200.0]",
+    "'0123456789' -> []",
+    "'89' -> [0.5]",
+    "'Target Channel' -> []",
+    "'square02b_small.png' -> []",
+    "'Channel' -> [0.6, 200.0]",
+    "'0123456789' -> []",
+    "'89' -> [0.5]",
+    "'Speed:' -> [-34.0]",
+    "'Mode:' -> [1.0]",
+    "'Options:' -> []",
+    "'GJ_optionsBtn_001.png' -> []"
+  ],
+  "points_sample": [
+    {
+      "addr": "0x14031ec29",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "Select Color:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031ec3c",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "Select Color:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031ec63",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "Select Color:",
+      "call": "qword ptr [rip + 0x1f7c5f]"
+    },
+    {
+      "addr": "0x14031ec6f",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "Select Color:",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031ec86",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "BG:",
+      "call": "qword ptr [rip + 0x1f801c]"
+    },
+    {
+      "addr": "0x14031eca0",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "BG:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031ecb3",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "BG:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031ecc4",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "G:",
+      "call": "qword ptr [rip + 0x1f7fde]"
+    },
+    {
+      "addr": "0x14031ecd6",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "G:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031ece9",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "G:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031ecfa",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "G2:",
+      "call": "qword ptr [rip + 0x1f7fa8]"
+    },
+    {
+      "addr": "0x14031ed0c",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "G2:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031ed1f",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "G2:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031ed30",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "Line:",
+      "call": "qword ptr [rip + 0x1f7f72]"
+    },
+    {
+      "addr": "0x14031ed42",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "Line:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031ed55",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "Line:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031ed66",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "MG:",
+      "call": "qword ptr [rip + 0x1f7f3c]"
+    },
+    {
+      "addr": "0x14031ed78",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "MG:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031ed8f",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "MG:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031eda0",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "MG2:",
+      "call": "qword ptr [rip + 0x1f7f02]"
+    },
+    {
+      "addr": "0x14031edb6",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "MG2:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031edcd",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "MG2:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031ede2",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rip + 0x1f7ec0]"
+    },
+    {
+      "addr": "0x14031edf8",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031ee0f",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031ee1c",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rdx + 0xc8]"
+    },
+    {
+      "addr": "0x14031ee4e",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rip + 0x1f7a74]"
+    },
+    {
+      "addr": "0x14031ee5a",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031ee7d",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rip + 0x1f7a45]"
+    },
+    {
+      "addr": "0x14031ee89",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031eeac",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rip + 0x1f7a16]"
+    },
+    {
+      "addr": "0x14031eeb8",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031eed9",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rip + 0x1f79e9]"
+    },
+    {
+      "addr": "0x14031eee5",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031ef09",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rip + 0x1f79b9]"
+    },
+    {
+      "addr": "0x14031ef15",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031ef3c",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rip + 0x1f7986]"
+    },
+    {
+      "addr": "0x14031ef48",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031ef6f",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rip + 0x1f7953]"
+    },
+    {
+      "addr": "0x14031ef7b",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031ef81",
+      "x": 0.3499999940395355,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140258930"
+    },
+    {
+      "addr": "0x14031ef9b",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031efb4",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140044bb0"
+    },
+    {
+      "addr": "0x14031efcb",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031efde",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031efef",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031eff6",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140258930"
+    },
+    {
+      "addr": "0x14031f00c",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031f025",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140044bb0"
+    },
+    {
+      "addr": "0x14031f03c",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f04f",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f060",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031f067",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140258930"
+    },
+    {
+      "addr": "0x14031f07d",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031f096",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140044bb0"
+    },
+    {
+      "addr": "0x14031f0ad",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f0c0",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f0d1",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031f0d8",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140258930"
+    },
+    {
+      "addr": "0x14031f0ee",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031f107",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140044bb0"
+    },
+    {
+      "addr": "0x14031f11e",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f131",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f142",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031f149",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140258930"
+    },
+    {
+      "addr": "0x14031f15f",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031f178",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140044bb0"
+    },
+    {
+      "addr": "0x14031f18f",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f1a2",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f1b3",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031f1ba",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140258930"
+    },
+    {
+      "addr": "0x14031f1d0",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031f1e9",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "0x140044bb0"
+    },
+    {
+      "addr": "0x14031f200",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f213",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x40]"
+    },
+    {
+      "addr": "0x14031f224",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "More:",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031f232",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "GJ_colorBtn_001.png",
+      "call": "qword ptr [rip + 0x1f7a58]"
+    },
+    {
+      "addr": "0x14031f249",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "GJ_colorBtn_001.png",
+      "call": "qword ptr [rdx + 0xa0]"
+    },
+    {
+      "addr": "0x14031f267",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "GJ_colorBtn_001.png",
+      "call": "qword ptr [rax]"
+    },
+    {
+      "addr": "0x14031f277",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f7a2b]"
+    },
+    {
+      "addr": "0x14031f293",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [r9 + 0x1b8]"
+    },
+    {
+      "addr": "0x14031f2ab",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rdx + 0x130]"
+    },
+    {
+      "addr": "0x14031f2c4",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rax + 0x130]"
+    },
+    {
+      "addr": "0x14031f2f3",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f75cf]"
+    },
+    {
+      "addr": "0x14031f2ff",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031f31c",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "0x140044bb0"
+    },
+    {
+      "addr": "0x14031f331",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [r8 + 0x1c0]"
+    },
+    {
+      "addr": "0x14031f34a",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f7578]"
+    },
+    {
+      "addr": "0x14031f359",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rdx + 0xc8]"
+    },
+    {
+      "addr": "0x14031f369",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f7961]"
+    },
+    {
+      "addr": "0x14031f389",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f68c9]"
+    },
+    {
+      "addr": "0x14031f396",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031f3a6",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f751c]"
+    },
+    {
+      "addr": "0x14031f3b5",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rdx + 0xc8]"
+    },
+    {
+      "addr": "0x14031f3c5",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f7905]"
+    },
+    {
+      "addr": "0x14031f3e1",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f6871]"
+    },
+    {
+      "addr": "0x14031f3ed",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031f3fd",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f74c5]"
+    },
+    {
+      "addr": "0x14031f40c",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rdx + 0xc8]"
+    },
+    {
+      "addr": "0x14031f41c",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f78ae]"
+    },
+    {
+      "addr": "0x14031f438",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f681a]"
+    },
+    {
+      "addr": "0x14031f444",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031f454",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f746e]"
+    },
+    {
+      "addr": "0x14031f464",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rdx + 0xc8]"
+    },
+    {
+      "addr": "0x14031f474",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f7856]"
+    },
+    {
+      "addr": "0x14031f491",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f67c1]"
+    },
+    {
+      "addr": "0x14031f49d",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031f4ad",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f7415]"
+    },
+    {
+      "addr": "0x14031f4bd",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rdx + 0xc8]"
+    },
+    {
+      "addr": "0x14031f4cd",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f77fd]"
+    },
+    {
+      "addr": "0x14031f4ed",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f6765]"
+    },
+    {
+      "addr": "0x14031f4f9",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031f509",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f73b9]"
+    },
+    {
+      "addr": "0x14031f51c",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rdx + 0xc8]"
+    },
+    {
+      "addr": "0x14031f52c",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f779e]"
+    },
+    {
+      "addr": "0x14031f548",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f670a]"
+    },
+    {
+      "addr": "0x14031f554",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rbx + 0xb8]"
+    },
+    {
+      "addr": "0x14031f564",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f735e]"
+    },
+    {
+      "addr": "0x14031f577",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rdx + 0xc8]"
+    },
+    {
+      "addr": "0x14031f587",
+      "x": 0.800000011920929,
+      "y": 305.0,
+      "near_str": "bigFont.fnt",
+      "call": "qword ptr [rip + 0x1f7743]"
+    }
+  ],
+  "point_count": 387
+}

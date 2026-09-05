@@ -31,6 +31,21 @@ $contentSrc = Join-Path $root "Content"
 $contentDst = Join-Path $dst "Content"
 if (Test-Path $contentSrc) {
 	Copy-Item (Join-Path $contentSrc "*") $contentDst -Recurse -Force
+	# Strip reverse-engineering / scratch dumps from the shipped tree
+	$junk = @(
+		"*_raw.txt",
+		"*_dump.txt",
+		"sneak_peek*",
+		"create_menu_ids_raw.txt",
+		"blocks_2.2_raw.txt",
+		"level_settings_init_dump.txt"
+	)
+	$customDst = Join-Path $contentDst "Custom"
+	if (Test-Path $customDst) {
+		foreach ($pat in $junk) {
+			Get-ChildItem $customDst -Filter $pat -ErrorAction SilentlyContinue | Remove-Item -Force
+		}
+	}
 	Write-Host "Synced Content -> release\OpenGD\Content"
 }
 

@@ -148,7 +148,7 @@ public:
 	float _shakeStrength = 0.f;
 	std::unordered_map<int, int> _itemCounts;
 
-	virtual void destroyPlayer(PlayerObject* player);
+	virtual void destroyPlayer(PlayerObject* player) override;
 	void pickupCoin(GameObject* obj, PlayerObject* player);
 	void setupCoinHUD();
 	void refreshCoinHUD();

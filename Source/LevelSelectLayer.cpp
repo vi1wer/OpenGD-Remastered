@@ -94,6 +94,23 @@ void LevelSelectLayer::applyPageColor(int page, bool animate)
 	}
 }
 
+void LevelSelectLayer::updateForWinSize()
+{
+	const auto winSize = Director::getInstance()->getWinSize();
+	if (_background)
+	{
+		const auto texSize = _background->getTextureRect().size;
+		if (texSize.width > 0.f && texSize.height > 0.f)
+		{
+			_background->setScaleX((winSize.width + 10.0f) / texSize.width);
+			_background->setScaleY((winSize.height + 10.0f) / texSize.height);
+		}
+		_background->setPosition({-5.0f, -5.0f});
+	}
+	if (_ground)
+		_ground->updateForWinSize();
+}
+
 
 Scene* LevelSelectLayer::scene(int page)
 {
@@ -125,11 +142,11 @@ bool LevelSelectLayer::init(int page)
 	_background = Sprite::create("GJ_gradientBG.png");
 	_background->setAnchorPoint({0.0f, 0.0f});
 	addChild(_background, -2);
-
-	_background->setScaleX((winSize.width + 10.0f) / _background->getTextureRect().size.width);
-	_background->setScaleY((winSize.height + 10.0f) / _background->getTextureRect().size.height);
-	_background->setPosition({-5.0f, -5.0f});
+	updateForWinSize();
 	_ground = GroundLayer::create(1);
+	if (!_ground)
+		return false;
+	_ground->_followPlayLayerColors = false;
 	_ground->setPositionY(-25.f);
 	addChild(_ground, -1);
 

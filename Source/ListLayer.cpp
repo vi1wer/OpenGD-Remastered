@@ -18,40 +18,45 @@
 
 #include "ListLayer.h"
 
-
 #include "Director.h"
 #include "2d/Label.h"
 #include "GameToolbox/getTextureString.h"
 
-ListLayer* ListLayer::create(ax::Node* scrollLayer, const char* label, ax::Color4B color, ax::Vec2 size){
-	auto pRet = new(std::nothrow) ListLayer();
+ListLayer* ListLayer::create(ax::Node* scrollLayer, const char* label, ax::Color4B color, ax::Vec2 size)
+{
+	auto pRet = new (std::nothrow) ListLayer();
 
-	if (pRet && pRet->init(scrollLayer, label, color, size)) {
+	if (pRet && pRet->init(scrollLayer, label, color, size))
+	{
 		pRet->autorelease();
 		return pRet;
-	} else {
+	}
+	else
+	{
 		AX_SAFE_DELETE(pRet);
 		return nullptr;
 	}
 }
 
-ListLayer* ListLayer::create(ax::Node* scrollLayer, const char* label, ax::Color4B color){
+ListLayer* ListLayer::create(ax::Node* scrollLayer, const char* label, ax::Color4B color)
+{
 	return ListLayer::create(scrollLayer, label, color, {356, 220});
 }
 
-ListLayer* ListLayer::create(ax::Node* scrollLayer, const char* label){
+ListLayer* ListLayer::create(ax::Node* scrollLayer, const char* label)
+{
 	return ListLayer::create(scrollLayer, label, {0, 0, 0, 180}, {356, 220});
 }
 
-bool ListLayer::init(ax::Node* scrollLayer, const char* label, ax::Color4B color, ax::Vec2 size){
-	if(!this->initWithColor(color)) return false;
-	
-	const auto& winSize = ax::Director::getInstance()->getWinSize();
+bool ListLayer::init(ax::Node* scrollLayer, const char* label, ax::Color4B color, ax::Vec2 size)
+{
+	if (!this->initWithColor(color))
+		return false;
 
 	this->setContentSize(size);
-	
-	//menu start
-	if(scrollLayer != nullptr){
+
+	if (scrollLayer != nullptr)
+	{
 		scrollLayer->setPosition({size.x / 2, size.y / 2.0f});
 		scrollLayer->setContentSize(size);
 		this->addChild(scrollLayer);
@@ -59,35 +64,32 @@ bool ListLayer::init(ax::Node* scrollLayer, const char* label, ax::Color4B color
 
 	auto bottom = ax::Sprite::createWithSpriteFrameName("GJ_table_bottom_001.png");
 	bottom->setPosition({size.x / 2, -10});
-	
 
 	auto top = ax::Sprite::createWithSpriteFrameName("GJ_table_top_001.png");
 	top->setPosition({size.x / 2, size.y + 15});
-	
 
+	// Local coords — do NOT use convertToNodeSpace (breaks when parent moves).
 	auto left = ax::Sprite::createWithSpriteFrameName("GJ_table_side_001.png");
-	left->setPosition(this->convertToNodeSpace({-20, 0}));
 	left->setAnchorPoint({0, 0});
+	left->setPosition({-20, 0});
 	left->setScaleY(size.height / left->getContentSize().height);
-	
 
 	auto right = ax::Sprite::createWithSpriteFrameName("GJ_table_side_001.png");
-	right->setPosition(this->convertToNodeSpace({size.x + 20, 0}));
 	right->setAnchorPoint({1, 0});
+	right->setPosition({size.x + 20, 0});
 	right->setScaleY(left->getScaleY());
 	right->setFlippedX(true);
-	
+
 	this->addChild(left);
 	this->addChild(right);
 	this->addChild(top);
 	this->addChild(bottom);
 
 	auto text = ax::Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"), label, ax::TextHAlignment::CENTER);
-		
 	text->setPositionX(top->getPositionX());
-	text->setPositionY(top->getPositionY() * 1.01);
+	text->setPositionY(top->getPositionY() * 1.01f);
 	text->setScale(0.8f);
 	this->addChild(text);
-	
+
 	return true;
 }

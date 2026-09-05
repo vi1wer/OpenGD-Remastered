@@ -114,8 +114,11 @@ void BaseGameLayer::loadLevel()
 		for (GameObject* object : _allObjects)
 		{
 			int section = sectionForPos(object->getPositionX());
-			object->_section = section - 1 < 0 ? 0 : section - 1;
-			_sectionObjects[section - 1 < 0 ? 0 : section - 1].push_back(object);
+			section = section - 1 < 0 ? 0 : section - 1;
+			object->_section = section;
+			while (static_cast<int>(_sectionObjects.size()) <= section)
+				_sectionObjects.push_back({});
+			_sectionObjects[section].push_back(object);
 
 			object->setCascadeOpacityEnabled(false);
 			object->update();
@@ -350,24 +353,26 @@ void BaseGameLayer::detachGameObject(GameObject* obj)
 
 void BaseGameLayer::createObjectsFromSetup(std::string_view uncompressedLevelString)
 {
-	//TODO: this function should only recieve vector of game object strings
-	
 	std::vector<std::string_view> objData = GameToolbox::splitByDelimStringView(uncompressedLevelString, ';');
+	if (objData.empty())
+		return;
 
 	_allObjects.reserve(objData.size());
-
 	objData.erase(objData.begin());
 
-	//theres prob a better way to do this but this works for now
-	if(const auto& last = objData.back(); last.front() != '1' || last[1] != ',')
+	if (!objData.empty())
 	{
-		objData.pop_back();
+		const auto& last = objData.back();
+		if (last.empty() || last.front() != '1' || (last.size() > 1 && last[1] != ','))
+			objData.pop_back();
 	}
-	
+
 	GameToolbox::log("creating & pushing");
 
 	for (const auto& objectDataSpecific : objData)
 	{
+		if (objectDataSpecific.empty())
+			continue;
 		GameObject* obj = GameObject::createFromString(objectDataSpecific);
 		if (obj)
 		{
@@ -375,8 +380,6 @@ void BaseGameLayer::createObjectsFromSetup(std::string_view uncompressedLevelStr
 			_allObjects.push_back(obj);
 		}
 	}
-
-	// add the objects to batch nodes
 }
 
 ax::Color3B BaseGameLayer::getLightBG(ax::Color3B bg, ax::Color3B p1)
@@ -389,13 +392,19 @@ ax::Color3B BaseGameLayer::getLightBG(ax::Color3B bg, ax::Color3B p1)
 
 void BaseGameLayer::setupLevel(std::string_view uncompressedLevelString)
 {
-	std::vector<std::string_view> levelData =
-		GameToolbox::splitByDelimStringView(GameToolbox::splitByDelimStringView(uncompressedLevelString, ';')[0], ',');
+	auto chunks = GameToolbox::splitByDelimStringView(uncompressedLevelString, ';');
+	if (chunks.empty())
+		return;
+
+	std::vector<std::string_view> levelData = GameToolbox::splitByDelimStringView(chunks[0], ',');
 
 	_colorChannels[1000] = SpriteColor(ax::Color3B::WHITE, 255, false);
 	_colorChannels[1001] = SpriteColor(ax::Color3B::WHITE, 255, false);
 
-	for (size_t i = 0; i < levelData.size() - 1; i += 2)
+	if (levelData.size() < 2)
+		return;
+
+	for (size_t i = 0; i + 1 < levelData.size(); i += 2)
 	{
 		if (levelData[i] == "kS1")
 		{
@@ -490,11 +499,42 @@ void BaseGameLayer::setupLevel(std::string_view uncompressedLevelString)
 		{
 			_levelSettings.songOffset = GameToolbox::stof(levelData[i + 1]);
 		}
+		else if (levelData[i] == "kA14")
+		{
+			// guidelines / unused in OpenGD
+		}
+		else if (levelData[i] == "kA15")
+		{
+			_levelSettings._fontID = GameToolbox::stoi(levelData[i + 1]);
+		}
+		else if (levelData[i] == "kA16")
+		{
+			_levelSettings._mgID = GameToolbox::stoi(levelData[i + 1]);
+			if (!_levelSettings._mgID)
+				_levelSettings._mgID = 1;
+		}
+		else if (levelData[i] == "kA17")
+		{
+			// unused / fade-in related in some versions
+		}
+		else if (levelData[i] == "kA18")
+		{
+			// ground line related
+		}
 		else if (levelData[i] == "kA22")
 		{
 			_levelSettings.platformer = GameToolbox::stoi(levelData[i + 1]) != 0;
 		}
 	}
+
+	if (!_colorChannels.contains(1002))
+		_colorChannels[1002] = SpriteColor(Color3B::WHITE, 255, false);
+	if (!_colorChannels.contains(1003))
+		_colorChannels[1003] = SpriteColor(Color3B(80, 80, 80), 255, false); // G2
+	if (!_colorChannels.contains(1009))
+		_colorChannels[1009] = SpriteColor(Color3B::WHITE, 255, false); // MG
+	if (!_colorChannels.contains(1014))
+		_colorChannels[1014] = SpriteColor(Color3B(120, 120, 120), 255, false); // MG2
 
 	// change to get the player color not from player
 	_colorChannels[1005]._color = Color3B::WHITE;

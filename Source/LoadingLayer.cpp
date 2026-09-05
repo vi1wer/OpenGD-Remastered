@@ -122,8 +122,9 @@ constexpr static auto splashes = std::to_array <const char*>({
 });
 
 constexpr static auto pngs = std::to_array<const char*>({
-	"GJ_GameSheetGlow.png", "GJ_GameSheet04.png", "GJ_GameSheet03.png", "GJ_GameSheet02.png", "GJ_GameSheet.png", "GJ_gradientBG.png", "edit_barBG_001.png", "GJ_button_01.png",
-	"gravityOverlay.png", "goldFont.png", "bigFont.png", "chatFont.png", "CCControlColourPickerSpriteSheet.png", "GJ_ShopSheet.png", "GJ_ShopSheet01.png", "SecretSheet.png", "PixelSheet_01.png"
+	"GJ_GameSheetGlow.png", "GJ_GameSheet04.png", "GJ_GameSheet03.png", "GJ_GameSheet02.png", "GJ_GameSheet.png",
+	"GJ_GameSheetEditor.png", "GJ_gradientBG.png", "edit_barBG_001.png", "GJ_button_01.png",
+	"GJ_button_02.png", "GJ_button_04.png", "gravityOverlay.png", "goldFont.png", "bigFont.png", "chatFont.png", "CCControlColourPickerSpriteSheet.png", "GJ_ShopSheet.png", "GJ_ShopSheet01.png", "SecretSheet.png", "PixelSheet_01.png"
 });
 
 constexpr static auto fonts = std::to_array<const char*>({
@@ -132,7 +133,7 @@ constexpr static auto fonts = std::to_array<const char*>({
 
 constexpr static auto plists = std::to_array<const char*>({
 	"GJ_GameSheetGlow.plist", "GJ_GameSheet.plist", "CCControlColourPickerSpriteSheet.plist", "GJ_GameSheet02.plist", "GJ_GameSheet03.plist",
-	"GJ_GameSheet04.plist", "GJ_ShopSheet.plist", "GJ_ShopSheet01.plist", "SecretSheet.plist", "PixelSheet_01.plist",
+	"GJ_GameSheet04.plist", "GJ_GameSheetEditor.plist", "GJ_ShopSheet.plist", "GJ_ShopSheet01.plist", "SecretSheet.plist", "PixelSheet_01.plist",
 });
 	
 	
@@ -169,9 +170,12 @@ bool LoadingLayer::init() {
 	auto winSize = dir->getWinSize();
 
 	auto bgSpr = Sprite::create(GameToolbox::getTextureString("game_bg_01_001.png"));
+	bgSpr->setName("opengd_fullscreen_bg");
 	bgSpr->setStretchEnabled(false);
-	bgSpr->setPosition(winSize / 2);
-	bgSpr->setScale(winSize.width / bgSpr->getContentSize().width);
+	bgSpr->setAnchorPoint({0.f, 0.f});
+	bgSpr->setPosition({0.f, 0.f});
+	bgSpr->setScaleX(winSize.width / bgSpr->getContentSize().width);
+	bgSpr->setScaleY(winSize.height / bgSpr->getContentSize().height);
 	bgSpr->setColor({ 0, 102, 255 });
 	this->addChild(bgSpr);
 

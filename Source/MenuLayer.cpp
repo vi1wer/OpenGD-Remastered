@@ -37,6 +37,7 @@
 #include "EndLevelLayer.h"
 #include "2d/Transition.h"
 #include "2d/Menu.h"
+#include "2d/Sprite.h"
 #include "base/Director.h"
 #include "platform/Application.h"
 #include "2d/Label.h"
@@ -196,9 +197,59 @@ bool MenuLayer::init()
 	
 	auto ngButton = MenuItemSpriteExtra::create("GJ_ngBtn_001.png", [&](Node* btn) {});
 	ngButton->setScale(0.93);
+
+	auto makeAuthorButtonNode = []() -> Node* {
+		auto* holder = Node::create();
+		constexpr float kBtnW = 51.f;
+		constexpr float kBtnH = 52.f;
+		const Vec2 center {kBtnW * 0.5f, kBtnH * 0.5f};
+		holder->setContentSize({kBtnW, kBtnH});
+		holder->setAnchorPoint({0.5f, 0.5f});
+
+		auto* bg = Sprite::createWithSpriteFrameName("GJ_plainBtn_001.png");
+		if (!bg)
+			return holder;
+		bg->setStretchEnabled(false);
+		bg->setScale(1.f);
+		bg->setAnchorPoint({0.5f, 0.5f});
+		bg->setPosition(center);
+		holder->addChild(bg, 0);
+
+		if (auto* icon = Sprite::create("Custom/author_icon.png"))
+		{
+			const float iconMax = std::min(bg->getContentSize().width, bg->getContentSize().height) * 0.46f;
+			const float iw = std::max(icon->getContentSize().width, 1.f);
+			const float ih = std::max(icon->getContentSize().height, 1.f);
+			icon->setScale(std::min(iconMax / iw, iconMax / ih));
+			icon->setAnchorPoint({0.5f, 0.5f});
+			icon->setPosition(center);
+			holder->addChild(icon, 1);
+		}
+		return holder;
+	};
+
+	auto authorBtn = MenuItemSpriteExtra::create(makeAuthorButtonNode(), [&](Node*) {
+		auto* content = Layer::create();
+		if (auto* icon = Sprite::create("Custom/author_icon.png"))
+		{
+			icon->setScale(1.15f);
+			icon->setPosition({0.f, 22.f});
+			content->addChild(icon);
+		}
+		if (auto* label = Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"),
+				"OpenGD Remastered\nby vi1wer"))
+		{
+			label->setScale(0.45f);
+			label->setAlignment(TextHAlignment::CENTER);
+			label->setPosition({0.f, -28.f});
+			content->addChild(label);
+		}
+		DropDownLayer::create(content, "Author")->showLayer(true, false);
+	});
+	authorBtn->setScale(1.f);
 	//static_cast<ax::Sprite*>(statsBtn->getSprite())->setStretchEnabled(false);
 
-	auto bottomMenu = Menu::create(achievementsBtn, optionsBtn, statsBtn, ngButton, nullptr);
+	auto bottomMenu = Menu::create(achievementsBtn, optionsBtn, statsBtn, ngButton, authorBtn, nullptr);
 
 	bottomMenu->setPosition({ winSize.width / 2.0f, 45 });
 	//bottomMenu->setPositionY(100);

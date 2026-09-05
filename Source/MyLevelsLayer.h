@@ -27,6 +27,7 @@ public:
 	static ax::Scene* scene();
 	static MyLevelsLayer* create();
 	bool init() override;
+	void onEnter() override;
 	void onKeyPressed(ax::EventKeyboard::KeyCode keyCode, ax::Event* event);
 
 private:
@@ -37,6 +38,7 @@ private:
 	void updatePageLabel();
 	void toggleCheck(int index);
 	void toggleAllChecks();
+	void refreshAllCheckSprite();
 	bool isChecked(int index) const;
 	void deleteChecked();
 	void openLevel(GJGameLevel* level, bool edit);
@@ -48,6 +50,7 @@ private:
 	ax::Label* _pageNumLabel = nullptr;
 	MenuItemSpriteExtra* _leftBtn = nullptr;
 	MenuItemSpriteExtra* _rightBtn = nullptr;
+	MenuItemSpriteExtra* _allCheckBtn = nullptr;
 	int _page = 0;
 	static constexpr int kLevelsPerPage = 10;
 };

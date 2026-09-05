@@ -21,9 +21,9 @@
 #include "LevelPage.h"
 #include "GJGameLevel.h"
 #include "LevelBrowserLayer.h"
-#include "LevelEditorLayer.h"
 #include "LevelInfoLayer.h"
 #include "LevelSearchLayer.h"
+#include "MyLevelsLayer.h"
 #include "MenuItemSpriteExtra.h"
 #include "MenuLayer.h"
 #include "PlayLayer.h"
@@ -131,8 +131,7 @@ bool CreatorLayer::init()
 		switch (btn->getTag())
 		{
 		case 0: {
-			auto* level = GJGameLevel::createWithMinimumData("Unnamed 0", "You", 33);
-			Director::getInstance()->replaceScene(TransitionFade::create(0.5f, LevelEditorLayer::scene(level)));
+			Director::getInstance()->pushScene(TransitionFade::create(0.5f, MyLevelsLayer::scene()));
 			return;
 		}
 		case 1: {

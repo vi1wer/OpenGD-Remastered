@@ -22,6 +22,7 @@
 #include "AudioEngine.h"
 
 #include "PlayLayer.h"
+#include "BaseGameLayer.h"
 #include "GameManager.h"
 #include "2d/ParticleSystem.h"
 #include "2d/ParticleSystemQuad.h"
@@ -199,7 +200,7 @@ bool PlayerObject::init(int playerFrame, Layer* gameLayer_, bool menuRandomIcons
 	gameLayer = gameLayer_;
 
 	// Check if layer is playlayer
-	inPlayLayer = dynamic_cast<PlayLayer*>(gameLayer_) != nullptr;
+	inPlayLayer = dynamic_cast<BaseGameLayer*>(gameLayer_) != nullptr;
 
 	// PlayerObject is only a transform/container. Giving it a texture rect makes
 	// Axmol render the default white texture behind the actual icon sprites.
@@ -1258,8 +1259,8 @@ void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 {
 	if (_currentGamemode == PlayerGamemodeWave)
 	{
-		if (auto* pl = PlayLayer::getInstance())
-			pl->destroyPlayer(this);
+		if (auto* layer = BaseGameLayer::getInstance())
+			layer->destroyPlayer(this);
 		return;
 	}
 
@@ -1279,8 +1280,11 @@ void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 		previousBounds.getMinX() < objectBounds.getMaxX();
 	if (!horizontalOverlap && !prevHorizontalOverlap)
 	{
-		if (innerBounds.intersectsRect(objectBounds) && !obj->_isTrigger)
-			static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+			if (innerBounds.intersectsRect(objectBounds) && !obj->_isTrigger)
+			{
+				if (auto* layer = BaseGameLayer::getInstance())
+					layer->destroyPlayer(this);
+			}
 		return;
 	}
 
@@ -1353,7 +1357,8 @@ void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 	// Side / underside / embed is fatal. Flying dies on any non-landing contact
 	// (the 7.5 inner box is too small and lets the ship pass through walls).
 	if (!obj->_isTrigger && (flying || innerBounds.intersectsRect(objectBounds)))
-		static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+		if (auto* layer = BaseGameLayer::getInstance())
+			layer->destroyPlayer(this);
 }
 
 void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
@@ -1368,7 +1373,8 @@ void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
 	// Wave cannot land on slopes in GD.
 	if (_currentGamemode == PlayerGamemodeWave)
 	{
-		static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+		if (auto* layer = BaseGameLayer::getInstance())
+			layer->destroyPlayer(this);
 		return;
 	}
 
@@ -1435,7 +1441,8 @@ void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
 		{
 			if (obj->isSlopeHazard() || (!_wasOnSlope && upsideMod * getPositionY() - 2.f > upsideMod * newPlayerY))
 			{
-				static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+				if (auto* layer = BaseGameLayer::getInstance())
+			layer->destroyPlayer(this);
 				return;
 			}
 			setPositionY(newPlayerY);
@@ -1461,7 +1468,8 @@ void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
 
 	if (obj->isSlopeHazard())
 	{
-		static_cast<PlayLayer*>(getPlayLayer())->destroyPlayer(this);
+		if (auto* layer = BaseGameLayer::getInstance())
+			layer->destroyPlayer(this);
 		return;
 	}
 
