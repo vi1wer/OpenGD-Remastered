@@ -791,6 +791,7 @@ void PlayLayer::recordAttemptProgress(bool completed)
 		return;
 
 	const int percent = completed ? 100 : currentPercent();
+	const int previousNormalBest = !_isPracticeMode ? gm->getLevelBest(level->_levelID, false) : 0;
 	if (gm->recordLevelProgress(level->_levelID, percent, _isPracticeMode))
 	{
 		if (_isPracticeMode)
@@ -813,6 +814,16 @@ void PlayLayer::recordAttemptProgress(bool completed)
 		}
 		if (mask)
 			gm->recordLevelCoins(level->_levelID, mask);
+
+		// First normal clear → mana orbs (keys drop every 500 orbs) + bonus key for demons.
+		if (!_isPracticeMode && !_testMode && previousNormalBest < 100)
+		{
+			const int orbGain = std::max(10, level->_stars * 20);
+			gm->addOrbs(orbGain);
+			if (level->_demon)
+				gm->addDemonKeys(1);
+			gm->save();
+		}
 	}
 }
 
@@ -1492,6 +1503,8 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 
 	std::deque<GameObject*> m_pHazards;
 
+	player->clearLetterBlockFlags();
+
 	for (int i = current_section - 2; i <= current_section + 1; i++)
 	{
 		if (i < _sectionObjects.size() && i >= 0)
@@ -1522,6 +1535,13 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 					}
 					if (playerOuterBounds.intersectsRect(coinBounds))
 						pickupCoin(obj, player);
+					continue;
+				}
+
+				if (obj->isLetterBlock())
+				{
+					if (playerOuterBounds.intersectsRect(obj->getLetterBlockBounds()))
+						player->applyLetterBlock(obj);
 					continue;
 				}
 
@@ -1598,7 +1618,9 @@ void PlayLayer::checkCollisions(PlayerObject* player, float dt)
 				const GameObjectType objType = obj->getGameObjectType();
 
 				if (objType == kGameObjectTypeDecoration || objType == kGameObjectTypeSpecial ||
-					!obj->wantsCollisionBounds())
+					objType == kGameObjectTypeLetterD || objType == kGameObjectTypeLetterJ ||
+					objType == kGameObjectTypeLetterS || objType == kGameObjectTypeLetterH ||
+					objType == kGameObjectTypeLetterF || !obj->wantsCollisionBounds())
 					continue;
 
 				if (obj->_isTrigger)

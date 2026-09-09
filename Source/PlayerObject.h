@@ -93,6 +93,14 @@ class PlayerObject : public GameObject
 	ax::ParticleSystemQuad* shipDragEffect;
 	ax::ParticleSystemQuad* landEffect1;
 	ax::ParticleSystemQuad* landEffect2;
+	ax::ParticleSystemQuad* _dashParticles = nullptr;
+
+	ax::Node* _dashSpritesContainer = nullptr;
+	ax::Sprite* _dashFireSprite = nullptr;
+	ax::Sprite* _dashFireOutline = nullptr;
+	int _dashFireFrame = 1;
+	float _dashAnimTimer = 0.f;
+	bool _dashFireActive = false;
 
 	
 	double m_dYVel = 0;
@@ -128,9 +136,18 @@ class PlayerObject : public GameObject
 	GameObject* _currentSlope = nullptr;
 	float _slopeRotation = 0.f;
 	float _slopeVelocity = 0.f;
+	float _currentSlopeYVelocity = 0.f;
 	float _slopeStartTime = 0.f;
 	float _totalTime = 0.f;
 	bool _slopeUphillContact = false;
+	bool _isCurrentSlopeTop = false;
+	int _collidingWithSlopeId = -1;
+	float _lastSlopeSnapY = 0.f;
+	double _yVelocityBeforeSlope = 0.0;
+
+	float getModifiedSlopeYVel() const;
+	float convertToClosestRotation(float angle) const;
+	void updateSlopeRotation(float dt);
 
   public:
 
@@ -156,6 +173,16 @@ class PlayerObject : public GameObject
 	bool _queuedHold;
 	bool _isDashing = false;
 	bool _spiderTeleportQueued = false;
+	bool _holdingFromOrb = false;
+	bool _inLetterD = false;
+	bool _inLetterJ = false;
+	bool _inLetterS = false;
+	bool _inLetterH = false;
+	bool _inLetterF = false;
+
+	void clearLetterBlockFlags();
+	void applyLetterBlock(GameObject* obj);
+	void stopDashing(bool playBoom = true);
 
 	void reset();
 
@@ -257,6 +284,10 @@ class PlayerObject : public GameObject
 	void activateStreak();
 	void deactivateStreak();
 	void updateWaveTrail();
+	void startDashFire();
+	void stopDashFire(bool playBoom = true);
+	void updateDashArt();
+	void updateDashAnimation(float dt);
 
 	void pushButton();
 	void releaseButton();

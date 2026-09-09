@@ -231,7 +231,10 @@ bool GameObject::wantsCollisionBounds() const
 		return false;
 	if (isPixelArtFrame(getBlockFrame(m_pId)))
 		return false;
-	if (_pObjectType == kGameObjectTypeDecoration || _pObjectType == kGameObjectTypeSpecial)
+	if (_pObjectType == kGameObjectTypeDecoration || _pObjectType == kGameObjectTypeSpecial ||
+		_pObjectType == kGameObjectTypeLetterD || _pObjectType == kGameObjectTypeLetterJ ||
+		_pObjectType == kGameObjectTypeLetterS || _pObjectType == kGameObjectTypeLetterH ||
+		_pObjectType == kGameObjectTypeLetterF)
 		return false;
 	if (isPassableDecorationFrame(getBlockFrame(m_pId)))
 		return false;
@@ -241,6 +244,31 @@ bool GameObject::wantsCollisionBounds() const
 		return trigger && trigger->_touchTriggered;
 	}
 	return true;
+}
+
+bool GameObject::isLetterBlock() const
+{
+	switch (_pObjectType)
+	{
+	case kGameObjectTypeLetterD:
+	case kGameObjectTypeLetterJ:
+	case kGameObjectTypeLetterS:
+	case kGameObjectTypeLetterH:
+	case kGameObjectTypeLetterF:
+		return true;
+	default:
+		return false;
+	}
+}
+
+ax::Rect GameObject::getLetterBlockBounds() const
+{
+	// Letter blocks are 1x1 zones (30x30) regardless of missing collision hitboxes.
+	const float sx = std::abs(getScaleX());
+	const float sy = std::abs(getScaleY());
+	const float w = 30.f * (sx > 0.f ? sx : 1.f);
+	const float h = 30.f * (sy > 0.f ? sy : 1.f);
+	return Rect(getPosition() - Vec2(w * 0.5f, h * 0.5f), Vec2(w, h));
 }
 
 void GameObject::refreshCollisionBounds()
@@ -369,7 +397,7 @@ void GameObject::startIdleAnimation()
 
 	const bool canFrameAnim =
 		!_animateOnTrigger && _pObjectType != kGameObjectTypeSolid && _pObjectType != kGameObjectTypeSlope &&
-		_pObjectType != kGameObjectTypeSpecial;
+		_pObjectType != kGameObjectTypeSpecial && !isLetterBlock();
 	if (canFrameAnim)
 	{
 		const auto us = frame.rfind('_');
@@ -743,6 +771,22 @@ void GameObject::customSetup()
 	case 3027: // teleport orb
 		setGameObjectType(kGameObjectTypeCustomRing);
 		break;
+	// Letter / smart blocks (D/J/S/H/F) — invisible zones, never solids.
+	case 1755:
+		setGameObjectType(kGameObjectTypeLetterD);
+		break;
+	case 1813:
+		setGameObjectType(kGameObjectTypeLetterJ);
+		break;
+	case 1829:
+		setGameObjectType(kGameObjectTypeLetterS);
+		break;
+	case 1859:
+		setGameObjectType(kGameObjectTypeLetterH);
+		break;
+	case 2866:
+		setGameObjectType(kGameObjectTypeLetterF);
+		break;
 	case 10:
 		setGameObjectType(kGameObjectTypeNormalGravityPortal);
 		break;
@@ -818,6 +862,17 @@ void GameObject::customSetup()
 
 	if (isPassableDecorationFrame(getBlockFrame(getID())))
 		setGameObjectType(kGameObjectTypeDecoration);
+
+	if (isLetterBlock())
+	{
+		// Visible in editor; invisible during gameplay (official letter blocks).
+		if (dynamic_cast<PlayLayer*>(BaseGameLayer::getInstance()))
+		{
+			setVisible(false);
+			_primaryInvisible = true;
+			setOpacity(0);
+		}
+	}
 
 	if (isCoin())
 		startCoinAnimation();

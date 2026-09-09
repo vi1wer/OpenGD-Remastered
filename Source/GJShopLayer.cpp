@@ -27,8 +27,31 @@
 #include "fmt/format.h"
 #include "platform/FileUtils.h"
 #include <algorithm>
+#include <cmath>
 
 USING_NS_AX;
+
+namespace
+{
+// GeometryDash.exe GJShopLayer::init (ShopType::Normal) — design 480×320
+constexpr float kDeskY = 95.f;
+constexpr float kDeskScale = 0.96f;
+constexpr float kKeeperXOff = 100.f;
+constexpr float kKeeperY = 230.f;
+constexpr float kSignXOff = -70.f;
+constexpr float kSignYOff = 38.f;
+constexpr float kGridY = 93.f;
+constexpr float kItemSpacing = 60.f; // ListButtonBar offset
+constexpr float kArrowOffset = 221.f;
+constexpr float kOwnedR = 60.f;
+constexpr float kOwnedG = 30.f;
+constexpr float kOwnedB = 20.f;
+
+Color3B ownedTint()
+{
+	return {static_cast<uint8_t>(kOwnedR), static_cast<uint8_t>(kOwnedG), static_cast<uint8_t>(kOwnedB)};
+}
+} // namespace
 
 Scene* GJShopLayer::scene()
 {
@@ -37,7 +60,7 @@ Scene* GJShopLayer::scene()
 
 GJShopLayer* GJShopLayer::create()
 {
-	auto* ret = new GJShopLayer();
+	auto* ret = new (std::nothrow) GJShopLayer();
 	if (ret && ret->init())
 	{
 		ret->autorelease();
@@ -45,6 +68,67 @@ GJShopLayer* GJShopLayer::create()
 	}
 	delete ret;
 	return nullptr;
+}
+
+float GJShopLayer::iconScaleForType(IconType type) const
+{
+	// GJItemIcon::scaleForType (Normal shop), then ×1.1 on the store icon
+	float base = 0.8f;
+	switch (type)
+	{
+	case IconType::kIconTypeShip:
+	case IconType::kIconTypeJetpack:
+		base = 0.6f;
+		break;
+	case IconType::kIconTypeBall:
+		base = 0.75f;
+		break;
+	case IconType::kIconTypeUfo:
+		base = 0.68f;
+		break;
+	case IconType::kIconTypeRobot:
+	case IconType::kIconTypeSpider:
+		base = 0.65f;
+		break;
+	case IconType::kIconTypeSwing:
+		base = 0.7f;
+		break;
+	case IconType::kIconTypeWave:
+	case IconType::kIconTypeCube:
+	case IconType::kIconTypeDeathEffect:
+	default:
+		base = 0.8f;
+		break;
+	}
+	return base * 1.1f;
+}
+
+Node* GJShopLayer::buildShopkeeper() const
+{
+	auto* keeper = Node::create();
+	auto addPart = [keeper](const char* frame, const Vec2& pos, int z, bool flipX = false) {
+		auto* spr = Sprite::createWithSpriteFrameName(frame);
+		if (!spr)
+			return;
+		spr->setStretchEnabled(false);
+		spr->setPosition(pos);
+		spr->setFlippedX(flipX);
+		keeper->addChild(spr, z);
+	};
+
+	// Idle pose from GJShopKeeper_AnimDesc.plist (both hands unflipped in official)
+	addPart("shopKeeper_torso_01_001.png", {0.f, -20.5f}, 0);
+	addPart("shopKeeper_head_01_001.png", {0.f, 25.5f}, 1);
+	addPart("shopKeeper_eye_01_001.png", {-15.f, 25.f}, 2);
+	addPart("shopKeeper_eye_01_001.png", {15.f, 25.f}, 3);
+	addPart("shopKeeper_pupil_01_001.png", {-14.f, 23.f}, 4);
+	addPart("shopKeeper_pupil_01_001.png", {14.f, 23.f}, 5);
+	addPart("shopKeeper_jaw_01_001.png", {-0.025f, 0.5f}, 6);
+	addPart("shopKeeper_hand_01_001.png", {-24.625f, -36.25f}, 7);
+	addPart("shopKeeper_hand_01_001.png", {24.625f, -36.25f}, 8);
+	keeper->setContentSize({80.f, 90.f});
+	keeper->setAnchorPoint({0.5f, 0.5f});
+	return keeper;
 }
 
 bool GJShopLayer::init()
@@ -55,117 +139,122 @@ bool GJShopLayer::init()
 	auto* director = Director::getInstance();
 	const auto& winSize = director->getWinSize();
 	const Vec2 center = winSize / 2;
-	_bgScaleX = winSize.width / kDesignWidth;
 
-	// shopBG is 480x320 and already contains the 3-shelf cabinet.
-	// Official GD stretches it in X on widescreen; item X uses the same scale.
 	GameToolbox::createBG(this, {62, 38, 24});
+
+	// Official: scale (win+5)/size, position (-2.5, -2.5), z = -2
 	if (auto* bg = Sprite::createWithSpriteFrameName("shopBG_001.png"))
 	{
 		bg->setStretchEnabled(false);
-		bg->setPosition(center);
-		bg->setScaleX(_bgScaleX);
-		addChild(bg, 0);
+		bg->setAnchorPoint({0.f, 0.f});
+		bg->setPosition({-2.5f, -2.5f});
+		bg->setScaleX((winSize.width + 5.f) / bg->getContentSize().width);
+		bg->setScaleY((winSize.height + 5.f) / bg->getContentSize().height);
+		addChild(bg, -2);
 	}
 
-	if (auto* keeper = Node::create())
+	// Desk: (winW/2, 95), scale 0.96 — not full-bleed stretch
+	if (auto* desk = Sprite::createWithSpriteFrameName("storeDesk_001.png"))
 	{
-		auto addPart = [keeper](const char* frame, const Vec2& pos, int z, bool flipX = false) {
-			auto* spr = Sprite::createWithSpriteFrameName(frame);
-			if (!spr)
-				return;
-			spr->setStretchEnabled(false);
-			spr->setPosition(pos);
-			spr->setFlippedX(flipX);
-			keeper->addChild(spr, z);
-		};
+		desk->setStretchEnabled(false);
+		desk->setPosition({center.x, kDeskY});
+		desk->setScale(kDeskScale);
+		addChild(desk, 4);
+	}
 
-		// Idle pose from GJShopKeeper_AnimDesc.plist
-		addPart("shopKeeper_torso_01_001.png", {0.f, -20.5f}, 0);
-		addPart("shopKeeper_head_01_001.png", {0.f, 25.5f}, 1);
-		addPart("shopKeeper_eye_01_001.png", {-15.f, 25.f}, 2);
-		addPart("shopKeeper_eye_01_001.png", {15.f, 25.f}, 3);
-		addPart("shopKeeper_pupil_01_001.png", {-14.f, 23.f}, 4);
-		addPart("shopKeeper_pupil_01_001.png", {14.f, 23.f}, 5);
-		addPart("shopKeeper_jaw_01_001.png", {0.f, 0.5f}, 6);
-		addPart("shopKeeper_hand_01_001.png", {-24.625f, -36.25f}, 7);
-		addPart("shopKeeper_hand_01_001.png", {24.625f, -36.25f}, 8, true);
-
-		// Right side, behind the desk (z 2 < desk 4). Hands sit on the counter.
-		keeper->setPosition({center.x + 148.f * _bgScaleX, 108.f});
-		keeper->setScale(2.05f);
-		addChild(keeper, 2);
-		_shopkeeper = keeper;
+	_shopkeeper = buildShopkeeper();
+	if (_shopkeeper)
+	{
+		_shopkeeper->setPosition({center.x + kKeeperXOff, kKeeperY});
+		addChild(_shopkeeper, 3);
 
 		auto* tap = EventListenerTouchOneByOne::create();
 		tap->setSwallowTouches(false);
 		tap->onTouchBegan = [this](Touch* touch, Event*) {
-			if (!_shopkeeper || _welcomeDialog)
+			if (!_shopkeeper || _activeDialog)
 				return false;
+			// Official hitbox ~80×90 around the keeper
 			const Vec2 local = _shopkeeper->convertToNodeSpace(touch->getLocation());
-			if (std::abs(local.x) < 42.f && local.y > -8.f && local.y < 52.f)
+			if (std::abs(local.x) < 40.f && local.y > -35.f && local.y < 55.f)
 			{
-				showWelcomeDialog();
+				showReactMessage();
 				return true;
 			}
 			return false;
 		};
-		_eventDispatcher->addEventListenerWithSceneGraphPriority(tap, keeper);
+		_eventDispatcher->addEventListenerWithSceneGraphPriority(tap, _shopkeeper);
 	}
 
-	if (auto* desk = Sprite::createWithSpriteFrameName("storeDesk_001.png"))
-	{
-		desk->setStretchEnabled(false);
-		desk->setAnchorPoint({0.5f, 0.f});
-		desk->setPosition({center.x, 0.f});
-		desk->setScaleX(winSize.width / desk->getContentSize().width);
-		addChild(desk, 4);
-	}
-
+	// Sign: (winW/2 - 70, winH - 38)
 	if (auto* sign = Sprite::createWithSpriteFrameName("shopSign_001.png"))
 	{
 		sign->setStretchEnabled(false);
-		sign->setPosition({center.x, winSize.height - 22.f});
+		sign->setPosition({center.x + kSignXOff, winSize.height - kSignYOff});
 		addChild(sign, 8);
+	}
+
+	// Plushies (Normal shop only) — decorative / credits hook
+	if (SpriteFrameCache::getInstance()->getSpriteFrameByName("plushies_001.png"))
+	{
+		if (auto* plush = Sprite::createWithSpriteFrameName("plushies_001.png"))
+		{
+			plush->setStretchEnabled(false);
+			plush->setScale(1.1f);
+			plush->setPosition({center.x - 130.f, 120.f});
+			addChild(plush, 5);
+		}
 	}
 
 	auto* nav = Menu::create();
 	nav->setPosition({0, 0});
 	addChild(nav, 10);
 
-	auto* backBtn = MenuItemSpriteExtra::create("GJ_arrow_01_001.png", [this](Node*) { goBack(); });
+	const char* backFrame = SpriteFrameCache::getInstance()->getSpriteFrameByName("GJ_arrow_03_001.png")
+		? "GJ_arrow_03_001.png"
+		: "GJ_arrow_01_001.png";
+	auto* backBtn = MenuItemSpriteExtra::create(backFrame, [this](Node*) { goBack(); });
 	backBtn->setPosition({24.f, winSize.height - 23.f});
 	nav->addChild(backBtn);
 
-	auto* leftSpr = Sprite::createWithSpriteFrameName("navArrowBtn_001.png");
+	auto* leftSpr = Sprite::createWithSpriteFrameName("GJ_arrow_03_001.png");
+	if (!leftSpr)
+		leftSpr = Sprite::createWithSpriteFrameName("navArrowBtn_001.png");
 	if (leftSpr)
 	{
 		leftSpr->setFlippedX(true);
 		_leftArrow = MenuItemSpriteExtra::create(leftSpr, [this](Node*) { setPage(_page - 1); });
-		_leftArrow->setPosition({center.x - 208.f * _bgScaleX, center.y + 8.f});
-		_leftArrow->setScale(0.65f);
+		_leftArrow->setPosition({center.x - kArrowOffset, kGridY});
+		_leftArrow->setScale(0.6f);
 		nav->addChild(_leftArrow);
 	}
-	if (auto* rightSpr = Sprite::createWithSpriteFrameName("navArrowBtn_001.png"))
+	auto* rightSpr = Sprite::createWithSpriteFrameName("GJ_arrow_03_001.png");
+	if (!rightSpr)
+		rightSpr = Sprite::createWithSpriteFrameName("navArrowBtn_001.png");
+	if (rightSpr)
 	{
 		_rightArrow = MenuItemSpriteExtra::create(rightSpr, [this](Node*) { setPage(_page + 1); });
-		_rightArrow->setPosition({center.x + 208.f * _bgScaleX, center.y + 8.f});
-		_rightArrow->setScale(0.65f);
+		_rightArrow->setPosition({center.x + kArrowOffset, kGridY});
+		_rightArrow->setScale(0.6f);
 		nav->addChild(_rightArrow);
 	}
+
+	// Currency HUD ≈ (winW - 34, winH - 15), scale 0.6
+	_orbLabel = Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"), "0");
+	_orbLabel->setScale(0.6f);
+	_orbLabel->setAnchorPoint({1.f, 0.5f});
+	_orbLabel->setPosition({winSize.width - 34.f, winSize.height - 15.f});
+	addChild(_orbLabel, 10);
 
 	if (auto* orbIcon = Sprite::createWithSpriteFrameName("currencyOrbIcon_001.png"))
 	{
 		orbIcon->setScale(0.6f);
-		orbIcon->setPosition({winSize.width - 18.f, winSize.height - 16.f});
+		orbIcon->setAnchorPoint({0.f, 0.5f});
+		orbIcon->setPosition({winSize.width - 30.f, winSize.height - 15.f});
+		// Official places icon relative to label; keep it just to the right of the numbers' left
+		orbIcon->setPosition({winSize.width - 18.f, winSize.height - 15.f});
+		orbIcon->setAnchorPoint({0.5f, 0.5f});
 		addChild(orbIcon, 10);
 	}
-
-	_orbLabel = Label::createWithBMFont(GameToolbox::getTextureString("bigFont.fnt"), "0");
-	_orbLabel->setScale(0.4f);
-	_orbLabel->setAnchorPoint({1.f, 0.5f});
-	_orbLabel->setPosition({winSize.width - 34.f, winSize.height - 16.f});
-	addChild(_orbLabel, 10);
 	refreshOrbLabel();
 
 	rebuildItemGrid();
@@ -187,28 +276,72 @@ bool GJShopLayer::init()
 void GJShopLayer::onEnterTransitionDidFinish()
 {
 	Scene::onEnterTransitionDidFinish();
-	// Must wait until TransitionMoveInT is gone. PopupLayer::show() parents to
-	// getRunningScene(); during the slide that scene is the transition and is
-	// destroyed a frame later, so the dialog never stays on screen.
-	if (!_welcomeDialog)
+	if (!_activeDialog)
 		showWelcomeDialog();
 }
 
 void GJShopLayer::showWelcomeDialog()
 {
-	if (_welcomeDialog)
+	if (_activeDialog)
 		return;
 
-	_welcomeDialog = DialogLayer::create({
-		{"Scratch", "My shop is still <co>under construction</c>... It's <cy>not fully ready</c> yet."},
-		{"Scratch", "But this will be <cg>fixed</c> in <cl>future updates</c>!"},
-		{"Scratch", "Come back <cb>later</c>..... <cr>Or right now!</c>"},
-	}, "dialogIcon_005.png");
-	if (!_welcomeDialog)
+	// Official first-visit flavor (showReactMessage), Scratch portrait = dialogIcon_005
+	_activeDialog = DialogLayer::create({
+		{"Scratch", "Hey, <cg>Welcome</c> back!", 5},
+	}, 2);
+	if (!_activeDialog)
 		return;
-	_welcomeDialog->setOnClose([this]() { _welcomeDialog = nullptr; });
-	addChild(_welcomeDialog, 200);
-	_welcomeDialog->show();
+	_activeDialog->setChatPlacement(DialogChatPlacement::Center);
+	_activeDialog->setAnimationType(DialogAnimationType::FromCenter);
+	_activeDialog->setOnClose([this]() { _activeDialog = nullptr; });
+	addChild(_activeDialog, 200);
+	_activeDialog->show();
+}
+
+void GJShopLayer::showReactMessage()
+{
+	if (_activeDialog)
+		return;
+
+	static const char* kReactLines[] = {
+		"Can I <cg>help</c> you?",
+		"What do you <cy>want</c>?",
+		"Can you <co>stop</c>?",
+		"<cr>Stop</c> with the <cg>poking</c>!",
+		"You're getting on my <cr>nerves</c>...",
+		"<cr>...BEGONE!</c>",
+	};
+	const int n = static_cast<int>(sizeof(kReactLines) / sizeof(kReactLines[0]));
+	const int idx = std::min(_reactIndex, n - 1);
+	_reactIndex = std::min(_reactIndex + 1, n - 1);
+
+	_activeDialog = DialogLayer::create({
+		{"Scratch", kReactLines[idx], 5},
+	}, 2);
+	if (!_activeDialog)
+		return;
+	_activeDialog->setChatPlacement(DialogChatPlacement::Center);
+	_activeDialog->setAnimationType(DialogAnimationType::FromCenter);
+	_activeDialog->setOnClose([this]() { _activeDialog = nullptr; });
+	addChild(_activeDialog, 200);
+	_activeDialog->show();
+}
+
+void GJShopLayer::showCantAffordDialog()
+{
+	if (_activeDialog)
+		return;
+	_activeDialog = DialogLayer::create({
+		{"Scratch", "You cannot <cg>afford</c> that <cl>item</c>.", 5},
+		{"Scratch", "You <co>do not</c> have enough <cl>Mana Orbs</c>.", 5},
+	}, 2);
+	if (!_activeDialog)
+		return;
+	_activeDialog->setChatPlacement(DialogChatPlacement::Center);
+	_activeDialog->setAnimationType(DialogAnimationType::FromCenter);
+	_activeDialog->setOnClose([this]() { _activeDialog = nullptr; });
+	addChild(_activeDialog, 200);
+	_activeDialog->show();
 }
 
 void GJShopLayer::refreshOrbLabel()
@@ -229,19 +362,6 @@ void GJShopLayer::setPage(int page)
 	rebuildItemGrid();
 }
 
-namespace
-{
-// shopBG is 480x320, unscaled in Y, centered on screen. Item local space is
-// bottom-left of a fixed slot (Axmol Node children are never centered).
-constexpr float kSlotW = 72.f;
-constexpr float kSlotH = 78.f;
-constexpr float kIconX = 36.f;
-constexpr float kIconY = 46.f;
-constexpr float kPriceY = 14.f;
-constexpr float kShopRowY[] = {18.f, -56.f};
-constexpr float kShopColX[] = {-108.f, -36.f, 36.f, 108.f};
-} // namespace
-
 void GJShopLayer::rebuildItemGrid()
 {
 	if (_itemMenu)
@@ -252,7 +372,7 @@ void GJShopLayer::rebuildItemGrid()
 
 	_itemMenu = Menu::create();
 	_itemMenu->setPosition({0, 0});
-	addChild(_itemMenu, 6);
+	addChild(_itemMenu, 100);
 
 	if (_leftArrow)
 		_leftArrow->setVisible(_page > 0);
@@ -261,6 +381,7 @@ void GJShopLayer::rebuildItemGrid()
 
 	auto* gm = GameManager::getInstance();
 	const auto& winSize = Director::getInstance()->getWinSize();
+	const float gridX = winSize.width * 0.5f;
 	const int start = _page * kItemsPerPage;
 	const int end = std::min(start + kItemsPerPage, ShopCatalog::itemCount());
 
@@ -270,21 +391,33 @@ void GJShopLayer::rebuildItemGrid()
 		if (!item)
 			continue;
 
+		constexpr float kSlot = 60.f;
 		auto* cell = Node::create();
-		cell->setContentSize({kSlotW, kSlotH});
-		cell->setAnchorPoint({0.f, 0.f});
+		cell->setContentSize({kSlot, kSlot + 18.f});
+		cell->setAnchorPoint({0.5f, 0.5f});
+
 		const bool unlocked = gm->isIconUnlocked(item->type, item->itemId);
+
+		if (auto* square = Sprite::createWithSpriteFrameName("playerSquare_001.png"))
+		{
+			square->setStretchEnabled(false);
+			square->setPosition({kSlot * 0.5f, kSlot * 0.5f + 8.f});
+			cell->addChild(square, 0);
+		}
+
+		const float iconScale = iconScaleForType(item->type);
+		const Vec2 iconPos{kSlot * 0.5f, kSlot * 0.5f + 8.f};
 
 		if (item->type == IconType::kIconTypeDeathEffect)
 		{
 			if (auto* icon = Sprite::createWithSpriteFrameName(StringUtils::format("explosionIcon_%02d_001.png", item->itemId)))
 			{
 				icon->setAnchorPoint({0.5f, 0.5f});
-				icon->setPosition({kIconX, kIconY});
-				icon->setScale(30.f / std::max(icon->getContentSize().width, icon->getContentSize().height));
+				icon->setPosition(iconPos);
+				icon->setScale(iconScale * (30.f / std::max(icon->getContentSize().width, icon->getContentSize().height)));
 				if (unlocked)
-					icon->setColor({50, 50, 50});
-				cell->addChild(icon);
+					icon->setColor(ownedTint());
+				cell->addChild(icon, 1);
 			}
 		}
 		else if (auto* icon = SimplePlayer::create(0))
@@ -297,12 +430,12 @@ void GJShopLayer::rebuildItemGrid()
 			icon->setSecondaryColor(gm->getPlayerSecondaryColor());
 			icon->setGlowColor(gm->getPlayerGlowColor());
 			icon->setGlow(false);
-			icon->fitToSize(30.f);
-			icon->placeCenteredAt({kIconX, kIconY});
+			icon->fitToSize(28.f * iconScale / 0.88f);
+			icon->placeCenteredAt(iconPos);
 			icon->setGlow(gm->isPlayerGlowEnabled());
 			if (unlocked)
-				icon->setColor({45, 45, 45});
-			cell->addChild(icon);
+				icon->setColor(ownedTint());
+			cell->addChild(icon, 1);
 		}
 
 		if (!unlocked)
@@ -310,16 +443,16 @@ void GJShopLayer::rebuildItemGrid()
 			auto* price = Label::createWithBMFont(
 				GameToolbox::getTextureString("bigFont.fnt"),
 				fmt::format("{}", item->costOrbs));
-			price->setScale(0.28f);
+			price->setScale(0.35f);
 			price->setAnchorPoint({1.f, 0.5f});
-			price->setPosition({kIconX + 2.f, kPriceY});
-			cell->addChild(price);
+			price->setPosition({kSlot * 0.5f + 2.f, 6.f});
+			cell->addChild(price, 2);
 			if (auto* orb = Sprite::createWithSpriteFrameName("currencyOrbIcon_001.png"))
 			{
-				orb->setScale(0.28f);
+				orb->setScale(0.32f);
 				orb->setAnchorPoint({0.f, 0.5f});
-				orb->setPosition({kIconX + 6.f, kPriceY});
-				cell->addChild(orb);
+				orb->setPosition({kSlot * 0.5f + 4.f, 6.f});
+				cell->addChild(orb, 2);
 			}
 		}
 
@@ -327,16 +460,14 @@ void GJShopLayer::rebuildItemGrid()
 			onItemPressed(n->getTag());
 		});
 		btn->setTag(i);
-		// MenuItemSpriteExtra::init recenters the node; pin it so the slot
-		// position is the center of this fixed-size cell.
-		cell->setAnchorPoint({0.5f, 0.5f});
-		cell->setPosition({kSlotW * 0.5f, kSlotH * 0.5f});
+		cell->setPosition({kSlot * 0.5f, (kSlot + 18.f) * 0.5f});
+
 		const int slot = i - start;
 		const int col = slot % 4;
 		const int row = slot / 4;
 		btn->setPosition({
-			winSize.width / 2 + kShopColX[col] * _bgScaleX,
-			winSize.height / 2 + kShopRowY[row]
+			gridX + (col - 1.5f) * kItemSpacing,
+			kGridY + (0.5f - row) * kItemSpacing
 		});
 		_itemMenu->addChild(btn);
 	}
@@ -344,6 +475,9 @@ void GJShopLayer::rebuildItemGrid()
 
 void GJShopLayer::onItemPressed(int index)
 {
+	if (_activeDialog)
+		return;
+
 	const auto* item = ShopCatalog::itemAt(index);
 	if (!item)
 		return;
@@ -351,21 +485,20 @@ void GJShopLayer::onItemPressed(int index)
 	auto* gm = GameManager::getInstance();
 	if (gm->isIconUnlocked(item->type, item->itemId))
 	{
-		if (auto* alert = AlertLayer::create("The Shop", "You already own this item."))
+		if (auto* alert = AlertLayer::create("Buy Item", "You already own this item."))
 			alert->show();
 		return;
 	}
 
 	if (gm->getOrbs() < item->costOrbs)
 	{
-		if (auto* alert = AlertLayer::create("The Shop", "Not enough Mana Orbs."))
-			alert->show();
+		showCantAffordDialog();
 		return;
 	}
 
 	auto* alert = AlertLayer::create(
-		"The Shop",
-		fmt::format("Buy this item for {} Mana Orbs?", item->costOrbs),
+		"Buy Item",
+		fmt::format("Do you want to buy this item\nfor {} Mana Orbs?", item->costOrbs),
 		"Cancel",
 		"Buy",
 		nullptr,
@@ -389,6 +522,8 @@ void GJShopLayer::onItemPressed(int index)
 
 void GJShopLayer::goBack()
 {
+	if (_activeDialog)
+		return;
 	AudioEngine::stopAll();
 	AudioEngine::play2d("menuLoop.mp3", true, 0.2f);
 	GameToolbox::popSceneWithTransition(0.5f, popTransition::kTransitionShop);
@@ -398,7 +533,7 @@ void GJShopLayer::onKeyPressed(EventKeyboard::KeyCode keyCode, Event*)
 {
 	if (keyCode == EventKeyboard::KeyCode::KEY_BACK || keyCode == EventKeyboard::KeyCode::KEY_ESCAPE)
 	{
-		if (_welcomeDialog)
+		if (_activeDialog)
 			return;
 		goBack();
 	}

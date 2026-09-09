@@ -8,7 +8,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows-blue)
 ![license](https://img.shields.io/badge/license-GPL--3.0-blue)
-![version](https://img.shields.io/badge/version-1.2.0-green)
+![version](https://img.shields.io/badge/version-1.3.0-green)
 
 </div>
 
@@ -18,7 +18,7 @@ OpenGD Remastered continues the open-source Geometry Dash client started by the 
 
 Powered by [axmol](https://github.com/axmolengine/axmol).
 
-**Version 1.2.0** — see [CHANGELOG.md](CHANGELOG.md).
+**Version 1.3.0** — see [CHANGELOG.md](CHANGELOG.md).
 
 ## What's new vs upstream OpenGD
 

@@ -7,12 +7,14 @@
 
 #include "2d/Scene.h"
 #include "EventKeyboard.h"
+#include "GameToolbox/enums.h"
 
 namespace ax
 {
 	class Event;
 	class Label;
 	class Menu;
+	class Sprite;
 }
 
 class DialogLayer;
@@ -33,16 +35,19 @@ private:
 	void refreshOrbLabel();
 	void setPage(int page);
 	void showWelcomeDialog();
+	void showReactMessage();
+	void showCantAffordDialog();
 	int pageCount() const;
+	ax::Node* buildShopkeeper() const;
+	float iconScaleForType(IconType type) const;
 
 	ax::Label* _orbLabel = nullptr;
 	ax::Node* _shopkeeper = nullptr;
 	ax::Menu* _itemMenu = nullptr;
 	ax::MenuItem* _leftArrow = nullptr;
 	ax::MenuItem* _rightArrow = nullptr;
-	DialogLayer* _welcomeDialog = nullptr;
+	DialogLayer* _activeDialog = nullptr;
 	int _page = 0;
-	float _bgScaleX = 1.f;
-	static constexpr int kItemsPerPage = 8;
-	static constexpr float kDesignWidth = 480.f;
+	int _reactIndex = 0;
+	static constexpr int kItemsPerPage = 8; // ListButtonBar 4×2
 };

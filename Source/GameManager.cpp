@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <platform/FileUtils.h>
 #include <sstream>
+#include "fmt/format.h"
 
 
 struct SaveObject
@@ -188,12 +189,18 @@ void GameManager::setMembersToMap()
 	SAVE_INT(_playerGlowColor);
 	SAVE_INT(_orbs);
 	SAVE_INT(_diamonds);
+	SAVE_INT(_demonKeys);
+	SAVE_INT(_goldKeys);
+	SAVE_INT(_orbKeyProgress);
+	SAVE_INT(_secretShopsUnlocked);
 	SAVE_INT(_musicVolume);
 	SAVE_INT(_sfxVolume);
 	#undef SAVE_INT
 	
 	set<int>("_mainSelectedMode", static_cast<int>(_mainSelectedMode));
 	set<std::string>("_unlockedShopItems", _unlockedShopItems);
+	set<std::string>("_openedChests", _openedChests);
+	set<bool>("_treasureRoomUnlocked", _treasureRoomUnlocked);
 }
 
 void GameManager::loadMembersFromMap()
@@ -239,6 +246,34 @@ void GameManager::loadMembersFromMap()
 		_orbs = get<int>("_orbs");
 	else
 		_orbs = 10000;
+
+	if (_options.intOptions.count("_demonKeys"))
+		_demonKeys = get<int>("_demonKeys");
+	else
+	{
+		// One-time: convert held mana orbs into demon keys (1 / 500), like lifetime earnings.
+		_demonKeys = std::max(0, _orbs / 500);
+		_orbKeyProgress = _orbs % 500;
+	}
+
+	if (_options.intOptions.count("_orbKeyProgress"))
+		_orbKeyProgress = get<int>("_orbKeyProgress");
+
+	if (_options.intOptions.count("_goldKeys"))
+		_goldKeys = get<int>("_goldKeys");
+	else
+		_goldKeys = 0;
+
+	if (_options.intOptions.count("_secretShopsUnlocked"))
+		_secretShopsUnlocked = get<int>("_secretShopsUnlocked");
+	else
+		_secretShopsUnlocked = 0;
+
+	_treasureRoomUnlocked = false;
+	if (_options.boolOptions.count("_treasureRoomUnlocked"))
+		_treasureRoomUnlocked = get<bool>("_treasureRoomUnlocked");
+
+	_openedChests = get<std::string>("_openedChests");
 
 	if (_options.intOptions.count("_musicVolume"))
 		_musicVolume = std::clamp(get<int>("_musicVolume"), 0, 100);
@@ -385,10 +420,37 @@ int GameManager::getDiamonds() const
 	return _diamonds;
 }
 
-void GameManager::addOrbs(int amount)
+void GameManager::addDiamonds(int amount)
 {
 	if (amount > 0)
-		_orbs += amount;
+		_diamonds += amount;
+}
+
+bool GameManager::spendDiamonds(int amount)
+{
+	if (amount <= 0 || _diamonds < amount)
+		return false;
+	_diamonds -= amount;
+	return true;
+}
+
+int GameManager::getDemonKeys() const
+{
+	return _demonKeys;
+}
+
+void GameManager::addOrbs(int amount)
+{
+	if (amount <= 0)
+		return;
+	_orbs += amount;
+	// Official: 1 demon key per 500 mana orbs earned
+	_orbKeyProgress += amount;
+	while (_orbKeyProgress >= 500)
+	{
+		_orbKeyProgress -= 500;
+		_demonKeys += 1;
+	}
 }
 
 bool GameManager::spendOrbs(int amount)
@@ -396,6 +458,55 @@ bool GameManager::spendOrbs(int amount)
 	if (amount <= 0 || _orbs < amount)
 		return false;
 	_orbs -= amount;
+	return true;
+}
+
+void GameManager::addDemonKeys(int amount)
+{
+	if (amount > 0)
+		_demonKeys += amount;
+}
+
+bool GameManager::spendDemonKeys(int amount)
+{
+	if (amount <= 0 || _demonKeys < amount)
+		return false;
+	_demonKeys -= amount;
+	return true;
+}
+
+int GameManager::getGoldKeys() const
+{
+	return _goldKeys;
+}
+
+void GameManager::addGoldKeys(int amount)
+{
+	if (amount > 0)
+		_goldKeys += amount;
+}
+
+bool GameManager::spendGoldKeys(int amount)
+{
+	if (amount <= 0 || _goldKeys < amount)
+		return false;
+	_goldKeys -= amount;
+	return true;
+}
+
+bool GameManager::isTreasureRoomUnlocked() const
+{
+	return _treasureRoomUnlocked;
+}
+
+bool GameManager::unlockTreasureRoom()
+{
+	if (_treasureRoomUnlocked)
+		return true;
+	if (!spendDemonKeys(5))
+		return false;
+	_treasureRoomUnlocked = true;
+	save();
 	return true;
 }
 
@@ -417,6 +528,75 @@ namespace
 		}
 		return false;
 	}
+
+	std::string chestToken(int chestType, int index)
+	{
+		return fmt::format("{}:{}", chestType, index);
+	}
+}
+
+bool GameManager::isChestOpened(int chestType, int index) const
+{
+	return csvContainsToken(_openedChests, chestToken(chestType, index));
+}
+
+void GameManager::markChestOpened(int chestType, int index)
+{
+	const auto token = chestToken(chestType, index);
+	if (csvContainsToken(_openedChests, token))
+		return;
+	if (!_openedChests.empty())
+		_openedChests += ';';
+	_openedChests += token;
+}
+
+int GameManager::countOpenedChestsOfType(int chestType) const
+{
+	int count = 0;
+	std::stringstream ss(_openedChests);
+	std::string part;
+	const std::string prefix = fmt::format("{}:", chestType);
+	while (std::getline(ss, part, ';'))
+	{
+		if (part.rfind(prefix, 0) == 0)
+			++count;
+	}
+	return count;
+}
+
+int GameManager::countOpenedChests() const
+{
+	// Regular demon-key chests (tier 1 + tier 2).
+	int total = 0;
+	for (int t = 1; t <= 6; ++t)
+		total += countOpenedChestsOfType(t);
+	return total;
+}
+
+int GameManager::nextUnopenedGoldChest() const
+{
+	constexpr int kGoldType = 10;
+	for (int i = 0; i < 20; ++i)
+	{
+		if (!isChestOpened(kGoldType, i))
+			return i;
+	}
+	return -1;
+}
+
+bool GameManager::isSecretShopUnlocked(int shopIndex) const
+{
+	if (shopIndex < 0 || shopIndex > 3)
+		return false;
+	return (_secretShopsUnlocked & (1 << shopIndex)) != 0;
+}
+
+void GameManager::unlockSecretShop(int shopIndex)
+{
+	if (shopIndex < 0 || shopIndex > 3)
+		return;
+	_secretShopsUnlocked |= (1 << shopIndex);
+	save();
 }
 
 bool GameManager::isIconUnlocked(IconType type, int id) const

@@ -86,3 +86,7 @@ opengd_out.txt
 opengd_run.log
 /tools/
 .vscode/
+
+# Local reverse-engineering scratch (never ship)
+_shop_*
+OpenGD-Remastered-*-win64.zip

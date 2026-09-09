@@ -82,7 +82,12 @@ enum GameObjectType
 	kGameObjectTypeSpecial = 40,
 	kGameObjectTypeSwingPortal = 41,
 	kGameObjectTypeSpiderPad = 42,
-	kGameObjectTypeSpiderRing = 43
+	kGameObjectTypeSpiderRing = 43,
+	kGameObjectTypeLetterD = 44,
+	kGameObjectTypeLetterJ = 45,
+	kGameObjectTypeLetterS = 46,
+	kGameObjectTypeLetterH = 47,
+	kGameObjectTypeLetterF = 48
 };
 
 struct Hitbox
@@ -231,7 +236,9 @@ class GameObject : public ax::Sprite, public ax::ActionTweenDelegate
 	void startCoinAnimation();
 	void startIdleAnimation();
 	bool isCoin() const;
+	bool isLetterBlock() const;
 	bool wantsCollisionBounds() const;
+	ax::Rect getLetterBlockBounds() const;
 	void applyLoadedHitbox(Hitbox hb);
 	void refreshCollisionBounds();
 	static Hitbox resolveObjectHitbox(int objectID, GameObject* obj);

@@ -50,6 +50,12 @@ public:
 	bool _playerGlowEnabled = true;
 	int _orbs = 10000;
 	int _diamonds = 0;
+	int _demonKeys = 0;
+	int _goldKeys = 0;
+	int _orbKeyProgress = 0; // orbs toward next demon key (every 500)
+	bool _treasureRoomUnlocked = false;
+	std::string _openedChests; // "type:index;..."
+	int _secretShopsUnlocked = 0; // bit0 Scratch, bit1 Community, bit2 Mechanic, bit3 Diamond
 	int _musicVolume = 100;
 	int _sfxVolume = 100;
 	bool _showHitboxes = false;
@@ -87,8 +93,25 @@ public:
 
 	int getOrbs() const;
 	int getDiamonds() const;
+	int getDemonKeys() const;
+	int getGoldKeys() const;
 	void addOrbs(int amount);
 	bool spendOrbs(int amount);
+	void addDiamonds(int amount);
+	bool spendDiamonds(int amount);
+	void addDemonKeys(int amount);
+	bool spendDemonKeys(int amount);
+	void addGoldKeys(int amount);
+	bool spendGoldKeys(int amount);
+	bool isTreasureRoomUnlocked() const;
+	bool unlockTreasureRoom(); // costs 5 keys once
+	bool isChestOpened(int chestType, int index) const;
+	void markChestOpened(int chestType, int index);
+	int countOpenedChests() const; // types 1..6 (regular demon-key chests)
+	int countOpenedChestsOfType(int chestType) const;
+	int nextUnopenedGoldChest() const; // 0..19 or -1
+	bool isSecretShopUnlocked(int shopIndex) const;
+	void unlockSecretShop(int shopIndex);
 	bool isIconUnlocked(IconType type, int id) const;
 	void unlockIcon(IconType type, int id);
 

@@ -37,12 +37,17 @@
 #include "EventDispatcher.h"
 #include "GJSearchObject.h"
 #include "SecretLayer2.h"
+#include "SecretRewardsLayer.h"
 #include "ComingSoonLayer.h"
+#include "DialogLayer.h"
+#include "AlertLayer.h"
+#include "GameManager.h"
 
 #include "GameToolbox/log.h"
 #include "GameToolbox/nodes.h"
 #include "GameToolbox/conv.h"
 #include "platform/FileUtils.h"
+#include <algorithm>
 #include <filesystem>
 #include <string_view>
 
@@ -214,14 +219,20 @@ bool CreatorLayer::init()
 		gridMenu->addChild(btn);
 	}
 
-	if (auto* secretLock = Sprite::createWithSpriteFrameName("GJ_lock_open_001.png"))
+	if (SpriteFrameCache::getInstance()->getSpriteFrameByName("GJ_lock_001.png")
+		|| SpriteFrameCache::getInstance()->getSpriteFrameByName("GJ_lock_open_001.png"))
 	{
-		secretLock->setStretchEnabled(false);
-		auto* secretLockBtn = MenuItemSpriteExtra::create(secretLock, [](Node*) {
-			Director::getInstance()->replaceScene(TransitionFade::create(.5f, SecretLayer2::scene()));
-		});
-		secretLockBtn->setPosition({winSize.width / 2 - 22.0f, winSize.height / 2 - 24.0f});
-		gridMenu->addChild(secretLockBtn);
+		const char* lockFrame = hasVaultDiamonds() ? "GJ_lock_open_001.png" : "GJ_lock_001.png";
+		if (!SpriteFrameCache::getInstance()->getSpriteFrameByName(lockFrame))
+			lockFrame = "GJ_lock_open_001.png";
+		_lockSpr = Sprite::createWithSpriteFrameName(lockFrame);
+		if (_lockSpr)
+		{
+			_lockSpr->setStretchEnabled(false);
+			_lockBtn = MenuItemSpriteExtra::create(_lockSpr, [this](Node*) { onLockPressed(); });
+			_lockBtn->setPosition({winSize.width / 2 - 22.0f, winSize.height / 2 - 24.0f});
+			gridMenu->addChild(_lockBtn);
+		}
 	}
 
 	const char* doorFrame = "secretDoorBtn_open_001.png";
@@ -231,7 +242,7 @@ bool CreatorLayer::init()
 	{
 		doorSpr->setStretchEnabled(false);
 		auto* doorBtn = MenuItemSpriteExtra::create(doorSpr, [](Node*) {
-			Director::getInstance()->replaceScene(TransitionFade::create(.5f, SecretLayer2::scene()));
+			Director::getInstance()->replaceScene(TransitionFade::create(.5f, SecretRewardsLayer::scene(false)));
 		});
 		doorBtn->setPosition({winSize.width / 2 - 18.0f, 18.0f - winSize.height / 2});
 		gridMenu->addChild(doorBtn);
@@ -246,11 +257,105 @@ bool CreatorLayer::init()
 	return true;
 }
 
+void CreatorLayer::onEnter()
+{
+	Scene::onEnter();
+	refreshLockVisual();
+}
+
+bool CreatorLayer::hasVaultDiamonds() const
+{
+	return GameManager::getInstance()->getDiamonds() >= kVaultDiamondCost;
+}
+
+void CreatorLayer::refreshLockVisual()
+{
+	if (!_lockSpr)
+		return;
+	const char* lockFrame = hasVaultDiamonds() ? "GJ_lock_open_001.png" : "GJ_lock_001.png";
+	if (!SpriteFrameCache::getInstance()->getSpriteFrameByName(lockFrame))
+		return;
+	_lockSpr->setSpriteFrame(SpriteFrameCache::getInstance()->getSpriteFrameByName(lockFrame));
+	_lockSpr->setStretchEnabled(false);
+}
+
+void CreatorLayer::onLockPressed()
+{
+	if (_lockDialog)
+		return;
+
+	if (hasVaultDiamonds())
+	{
+		showVaultWelcomeAndEnter();
+		return;
+	}
+	showKeymasterPoke();
+}
+
+void CreatorLayer::showKeymasterPoke()
+{
+	static const char* kLines[] = {
+		"You think I'll let you in?",
+		"No, I'd rather go to sleep",
+		"Maybe you'll stop already?",
+		"Fine, <cg>100 diamonds</c> and enter....",
+	};
+	constexpr int kCount = 4;
+	const int idx = std::min(_lockPoke, kCount - 1);
+	if (_lockPoke < kCount - 1)
+		_lockPoke++;
+
+	_lockDialog = DialogLayer::create({
+		{"The Keymaster", kLines[idx], kKeymasterIcon},
+	}, kKeymasterBg);
+	if (!_lockDialog)
+		return;
+	_lockDialog->setChatPlacement(DialogChatPlacement::Center);
+	_lockDialog->setAnimationType(DialogAnimationType::FromCenter);
+	_lockDialog->setOnClose([this]() { _lockDialog = nullptr; });
+	addChild(_lockDialog, 200);
+	_lockDialog->show();
+}
+
+void CreatorLayer::showVaultWelcomeAndEnter()
+{
+	_lockDialog = DialogLayer::create({
+		{"The Keymaster", "You've collected the necessary diamonds... Okay, come in.", kKeymasterIcon},
+	}, kKeymasterBg);
+	if (!_lockDialog)
+	{
+		enterVault();
+		return;
+	}
+	_lockDialog->setChatPlacement(DialogChatPlacement::Center);
+	_lockDialog->setAnimationType(DialogAnimationType::FromCenter);
+	_lockDialog->setOnClose([this]() {
+		_lockDialog = nullptr;
+		enterVault();
+	});
+	addChild(_lockDialog, 200);
+	_lockDialog->show();
+}
+
+void CreatorLayer::enterVault()
+{
+	if (!hasVaultDiamonds())
+	{
+		if (auto* alert = AlertLayer::create("The Vault", "Not enough Diamonds.\nYou need 100."))
+			alert->show();
+		refreshLockVisual();
+		return;
+	}
+	Director::getInstance()->replaceScene(TransitionFade::create(0.5f, SecretLayer2::scene()));
+}
+
 //TODO: add keybinds for other stuff
 void CreatorLayer::onKeyPressed(ax::EventKeyboard::KeyCode keyCode, ax::Event* event) {
 	switch (keyCode) 
 	{
 	case EventKeyboard::KeyCode::KEY_BACK:
+		if (_lockDialog)
+			return;
 		Director::getInstance()->replaceScene(TransitionFade::create(0.5f, MenuLayer::scene()));
 		break;
 	default:

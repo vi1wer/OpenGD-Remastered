@@ -7,6 +7,8 @@
 
 namespace
 {
+	// Official Normal shop (ShopType::Normal) store list — icons/effects only.
+	// Col1/Col2/Streak need separate unlock plumbing; added when supported.
 	constexpr ShopItem kShopkeeperItems[] = {
 		{34, IconType::kIconTypeCube, 79, 500},
 		{1, IconType::kIconTypeCube, 77, 1000},

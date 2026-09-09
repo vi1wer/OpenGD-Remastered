@@ -26,6 +26,8 @@
 #include "GameManager.h"
 #include "2d/ParticleSystem.h"
 #include "2d/ParticleSystemQuad.h"
+#include "2d/SpriteFrameCache.h"
+#include "2d/Animation.h"
 #include "2d/ActionInstant.h"
 #include "2d/ActionInterval.h"
 #include "2d/ActionEase.h"
@@ -62,15 +64,22 @@ void PlayerObject::reset()
 	_currentSlope = nullptr;
 	_slopeRotation = 0.f;
 	_slopeVelocity = 0.f;
+	_currentSlopeYVelocity = 0.f;
 	_slopeStartTime = 0.f;
 	_totalTime = 0.f;
 	_slopeUphillContact = false;
+	_isCurrentSlopeTop = false;
+	_collidingWithSlopeId = -1;
+	_lastSlopeSnapY = 0.f;
+	_yVelocityBeforeSlope = 0.0;
 	stopActionByTag(0);
 	stopActionByTag(1);
 	_hasRingJumped = false;
 	_isDashing = false;
 	_spiderTeleportQueued = false;
 	_queuedHold = false;
+	_holdingFromOrb = false;
+	clearLetterBlockFlags();
 	_jumpedTimes = 0;
 	_lastP = getPosition();
 
@@ -85,6 +94,7 @@ void PlayerObject::reset()
 	_particles2Activated = false;
 	_particles3Activated = false;
 
+	stopDashFire(false);
 	deactivateStreak();
 }
 
@@ -104,6 +114,7 @@ void PlayerObject::playDeathEffect(bool stopMusic)
 	pauseParticle(shipDragEffect);
 	pauseParticle(landEffect1);
 	pauseParticle(landEffect2);
+	stopDashFire(false);
 	deactivateStreak();
 
 	setVisible(false);
@@ -422,6 +433,42 @@ bool PlayerObject::init(int playerFrame, Layer* gameLayer_, bool menuRandomIcons
 	setupParticle(shipDragEffect, "shipDragEffect.plist", ParticleSystem::PositionType::GROUPED, 1);
 	setupParticle(landEffect1, "landEffect.plist", ParticleSystem::PositionType::GROUPED, 1);
 	setupParticle(landEffect2, "landEffect.plist", ParticleSystem::PositionType::GROUPED, 1);
+	setupParticle(_dashParticles, "dashEffect.plist", ParticleSystem::PositionType::FREE, 3);
+	if (_dashParticles)
+	{
+		_dashParticles->setBlendFunc(GameToolbox::getBlending());
+		_dashParticles->setVisible(false);
+	}
+
+	// Dash fireball lives on the game layer so player rotation does not spin it.
+	auto* cache = SpriteFrameCache::getInstance();
+	_dashSpritesContainer = Node::create();
+	if (_dashSpritesContainer && gameLayer)
+	{
+		_dashSpritesContainer->setVisible(false);
+		gameLayer->addChild(_dashSpritesContainer, 20);
+
+		if (cache->getSpriteFrameByName("playerDash2_001.png"))
+		{
+			_dashFireSprite = Sprite::createWithSpriteFrameName("playerDash2_001.png");
+			if (_dashFireSprite)
+			{
+				_dashFireSprite->setStretchEnabled(false);
+				_dashFireSprite->setBlendFunc(GameToolbox::getBlending());
+				_dashSpritesContainer->addChild(_dashFireSprite, 1);
+			}
+		}
+		if (cache->getSpriteFrameByName("playerDash2_outline_001.png"))
+		{
+			_dashFireOutline = Sprite::createWithSpriteFrameName("playerDash2_outline_001.png");
+			if (_dashFireOutline)
+			{
+				_dashFireOutline->setStretchEnabled(false);
+				_dashFireOutline->setBlendFunc(GameToolbox::getBlending());
+				_dashSpritesContainer->addChild(_dashFireOutline, 0);
+			}
+		}
+	}
 
 	_waveTrail = HardStreak::create();
 	if (_waveTrail)
@@ -626,9 +673,9 @@ void PlayerObject::update(float dt)
 
 		if (_isDashing)
 		{
-			if (!m_bIsHolding)
+			if (!m_bIsHolding || _inLetterS)
 			{
-				_isDashing = false;
+				stopDashing(true);
 			}
 			else
 			{
@@ -648,10 +695,12 @@ void PlayerObject::update(float dt)
 
 			if (_currentGamemode == PlayerGamemodeWave)
 			{
+				// Official: normal wave is 1:1 (45°), mini wave is 2:1 (~63.4°).
 				const float dir = (m_bIsHolding ? 1.f : -1.f) * flipMod();
-				velY = velX * dir;
+				const float waveYMult = (_mini || _vehicleSize < 1.f) ? 2.f : 1.f;
+				velY = velX * dir * waveYMult;
 				m_dYVel = velY / (dtSlow > 0.f ? dtSlow : 1.f);
-				setRotation(-45.f * dir);
+				setRotation(-atan2f(waveYMult, 1.f) * 57.29578f * dir);
 			}
 
 			setPosition(getPosition() + Vec2{velX, velY});
@@ -688,6 +737,7 @@ void PlayerObject::update(float dt)
 
 	updateIconAnimation();
 	updateWaveTrail();
+	updateDashAnimation(dt);
 
 	_touchedRingObject = nullptr;
 	_touchedPadObject = nullptr;
@@ -768,6 +818,190 @@ void PlayerObject::deactivateStreak()
 	_waveTrail->setVisible(false);
 }
 
+void PlayerObject::clearLetterBlockFlags()
+{
+	_inLetterD = false;
+	_inLetterJ = false;
+	_inLetterS = false;
+	_inLetterH = false;
+	_inLetterF = false;
+}
+
+void PlayerObject::applyLetterBlock(GameObject* obj)
+{
+	if (!obj)
+		return;
+	switch (obj->getGameObjectType())
+	{
+	case kGameObjectTypeLetterD:
+		_inLetterD = true;
+		break;
+	case kGameObjectTypeLetterJ:
+		_inLetterJ = true;
+		break;
+	case kGameObjectTypeLetterS:
+		_inLetterS = true;
+		break;
+	case kGameObjectTypeLetterH:
+		_inLetterH = true;
+		break;
+	case kGameObjectTypeLetterF:
+		_inLetterF = true;
+		break;
+	default:
+		break;
+	}
+}
+
+void PlayerObject::stopDashing(bool playBoom)
+{
+	if (!_isDashing && !_dashFireActive)
+		return;
+	_isDashing = false;
+	stopDashFire(playBoom);
+}
+
+void PlayerObject::startDashFire()
+{
+	_dashFireActive = true;
+	_dashFireFrame = 1;
+	_dashAnimTimer = 0.f;
+	stopRotation();
+	setRotation(0.f);
+
+	if (_dashSpritesContainer)
+	{
+		_dashSpritesContainer->setVisible(true);
+		_dashSpritesContainer->setRotation(0.f);
+		_dashSpritesContainer->setPosition(getPosition());
+	}
+
+	if (_dashParticles)
+	{
+		_dashParticles->setVisible(true);
+		_dashParticles->resetSystem();
+		_dashParticles->resumeEmissions();
+		_dashParticles->setPosition(getPosition());
+	}
+
+	updateDashArt();
+}
+
+void PlayerObject::stopDashFire(bool playBoom)
+{
+	const bool wasActive = _dashFireActive;
+	_dashFireActive = false;
+	_dashAnimTimer = 0.f;
+	_dashFireFrame = 1;
+
+	if (_dashParticles)
+	{
+		_dashParticles->pauseEmissions();
+		_dashParticles->setVisible(false);
+	}
+
+	if (_dashSpritesContainer)
+		_dashSpritesContainer->setVisible(false);
+
+	if (playBoom && wasActive && gameLayer &&
+		SpriteFrameCache::getInstance()->getSpriteFrameByName("playerDash2_boom2_001.png"))
+	{
+		auto* boom = Sprite::createWithSpriteFrameName("playerDash2_boom2_001.png");
+		if (boom)
+		{
+			boom->setStretchEnabled(false);
+			boom->setBlendFunc(GameToolbox::getBlending());
+			boom->setPosition(getPosition());
+			boom->setColor(getMainColor());
+			gameLayer->addChild(boom, 25);
+
+			Vector<SpriteFrame*> frames;
+			auto* cache = SpriteFrameCache::getInstance();
+			for (int i = 1; i <= 9; i++)
+			{
+				auto* sf = cache->getSpriteFrameByName(StringUtils::format("playerDash2_boom2_%03d.png", i));
+				if (!sf)
+					break;
+				frames.pushBack(sf);
+			}
+			if (frames.size() >= 2)
+			{
+				boom->runAction(Sequence::create(
+					Animate::create(Animation::createWithSpriteFrames(frames, 0.04f)),
+					RemoveSelf::create(),
+					nullptr));
+			}
+			else
+			{
+				boom->runAction(Sequence::create(FadeOut::create(0.15f), RemoveSelf::create(), nullptr));
+			}
+		}
+	}
+}
+
+void PlayerObject::updateDashArt()
+{
+	if (!_dashFireActive)
+		return;
+
+	auto* cache = SpriteFrameCache::getInstance();
+	const int frame = std::clamp(_dashFireFrame, 1, 12);
+
+	if (_dashFireSprite)
+	{
+		if (auto* sf = cache->getSpriteFrameByName(StringUtils::format("playerDash2_%03d.png", frame)))
+			_dashFireSprite->setSpriteFrame(sf);
+		_dashFireSprite->setBlendFunc(GameToolbox::getBlending());
+		_dashFireSprite->setColor(getMainColor());
+	}
+	if (_dashFireOutline)
+	{
+		if (auto* sf = cache->getSpriteFrameByName(StringUtils::format("playerDash2_outline_%03d.png", frame)))
+			_dashFireOutline->setSpriteFrame(sf);
+		_dashFireOutline->setBlendFunc(GameToolbox::getBlending());
+		_dashFireOutline->setColor(getSecondaryColor());
+	}
+
+	const float facing = (!m_bIsPlatformer || direction >= 0.f) ? 1.f : -1.f;
+	const float scale = _mini ? 0.6f : 1.f;
+	if (_dashSpritesContainer)
+	{
+		_dashSpritesContainer->setScaleX(facing * scale);
+		_dashSpritesContainer->setScaleY(scale);
+		_dashSpritesContainer->setRotation(0.f);
+		_dashSpritesContainer->setPosition(getPosition());
+	}
+}
+
+void PlayerObject::updateDashAnimation(float dt)
+{
+	if (!_dashFireActive)
+		return;
+
+	if (!_isDashing)
+	{
+		stopDashFire(true);
+		return;
+	}
+
+	_dashAnimTimer += dt;
+	constexpr float kFrameTime = 1.f / 30.f;
+	while (_dashAnimTimer >= kFrameTime)
+	{
+		_dashAnimTimer -= kFrameTime;
+		_dashFireFrame = (_dashFireFrame % 12) + 1;
+		updateDashArt();
+	}
+
+	if (_dashSpritesContainer)
+	{
+		_dashSpritesContainer->setPosition(getPosition());
+		_dashSpritesContainer->setRotation(0.f);
+	}
+	if (_dashParticles)
+		_dashParticles->setPosition(getPosition());
+}
+
 void PlayerObject::activateStreak()
 {
 	if (!_waveTrail)
@@ -827,6 +1061,7 @@ void PlayerObject::ringJump(GameObject* obj)
 		_touchedRingObject->triggerActivated(this);
 		m_isRising = true;
 		_queuedHold = false;
+		_holdingFromOrb = m_bIsHolding;
 		setIsOnGround(false);
 
 		double newYVel = m_dJumpHeight;
@@ -920,11 +1155,14 @@ void PlayerObject::ringJump(GameObject* obj)
 			if (obj->getGameObjectType() == kGameObjectTypeGravityDashRing)
 				flipGravity(!isGravityFlipped());
 			_touchedRingObject = nullptr;
+			_holdingFromOrb = m_bIsHolding;
+			startDashFire();
 			activateStreak();
 			return;
 		case kGameObjectTypeSpiderRing:
 			_spiderTeleportQueued = true;
 			_touchedRingObject = nullptr;
+			_holdingFromOrb = m_bIsHolding;
 			return;
 		case kGameObjectTypeCustomRing:
 			_touchedRingObject = nullptr;
@@ -1174,12 +1412,32 @@ void PlayerObject::updateJump(float dt)
 
 		if (shouldJump && isOnGround())
 		{
+			// J block: suppress hold leftover from an orb until the player releases.
+			if (_inLetterJ && _holdingFromOrb)
+			{
+				// stay grounded
+			}
+			else
+			{
 			m_isRising = true;
 			setIsOnGround(false);
 
 			float jumpAccel = m_dJumpHeight;
 
 			m_dYVel = flipGravityMult * jumpAccel * playerSize;
+
+			// Official slope jump boost (updateJump + getModifiedSlopeYVel).
+			if ((_wasOnSlope || _isOnSlope) && _slopeVelocity * flipGravityMult > 0.0)
+			{
+				const float velCap = static_cast<float>(m_dYVel) * 1.4f;
+				const float mod =
+					(_currentGamemode == PlayerGamemodeBall) ? _slopeVelocity : getModifiedSlopeYVel();
+				m_dYVel += mod * 0.25f;
+				if (isGravityFlipped())
+					m_dYVel = std::min(m_dYVel, static_cast<double>(velCap));
+				else
+					m_dYVel = std::max(m_dYVel, static_cast<double>(velCap));
+			}
 
 			if (_currentGamemode == PlayerGamemodeBall)
 			{
@@ -1190,7 +1448,9 @@ void PlayerObject::updateJump(float dt)
 			else if (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot)
 			{
 				if (!_touchedRingObject) _queuedHold = false;
+				_holdingFromOrb = false;
 				runRotateAction();
+			}
 			}
 		}
 		else
@@ -1257,13 +1517,6 @@ bool PlayerObject::playerIsFallingBugged()
 
 void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 {
-	if (_currentGamemode == PlayerGamemodeWave)
-	{
-		if (auto* layer = BaseGameLayer::getInstance())
-			layer->destroyPlayer(this);
-		return;
-	}
-
 	const Rect objectBounds = obj->getOuterBounds();
 	Rect playerBounds = _mini ? getOuterBounds(0.6f, 0.6f) : getOuterBounds();
 	const Rect innerBounds = getInnerBounds();
@@ -1278,6 +1531,71 @@ void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 	const bool prevHorizontalOverlap =
 		previousBounds.getMaxX() > objectBounds.getMinX() &&
 		previousBounds.getMinX() < objectBounds.getMaxX();
+
+	auto snapToTop = [&]() {
+		setPositionY(objectBounds.getMaxY() + playerBounds.size.height * 0.5f);
+		hitGround(false);
+	};
+	auto snapToBottom = [&]() {
+		setPositionY(objectBounds.getMinY() - playerBounds.size.height * 0.5f);
+		hitGround(true);
+	};
+
+	// D block: wave may slide on solid surfaces instead of dying.
+	if (_currentGamemode == PlayerGamemodeWave)
+	{
+		if (!_inLetterD)
+		{
+			if (auto* layer = BaseGameLayer::getInstance())
+				layer->destroyPlayer(this);
+			return;
+		}
+
+		if (!horizontalOverlap && !prevHorizontalOverlap)
+			return;
+
+		const float snapPad = 8.f;
+		if (!isGravityFlipped())
+		{
+			const float blockTop = objectBounds.getMaxY();
+			const bool fromAbove = previousBounds.getMinY() >= blockTop - snapPad;
+			if (fromAbove && playerBounds.getMinY() <= blockTop + 2.f)
+			{
+				setPositionY(blockTop + playerBounds.size.height * 0.5f);
+				m_dYVel = 0.0;
+				return;
+			}
+			const float blockBottom = objectBounds.getMinY();
+			const bool fromBelow = previousBounds.getMaxY() <= blockBottom + snapPad;
+			if (fromBelow && playerBounds.getMaxY() >= blockBottom - 2.f)
+			{
+				setPositionY(blockBottom - playerBounds.size.height * 0.5f);
+				m_dYVel = 0.0;
+				return;
+			}
+		}
+		else
+		{
+			const float blockBottom = objectBounds.getMinY();
+			const bool fromBelow = previousBounds.getMaxY() <= blockBottom + snapPad;
+			if (fromBelow && playerBounds.getMaxY() >= blockBottom - 2.f)
+			{
+				setPositionY(blockBottom - playerBounds.size.height * 0.5f);
+				m_dYVel = 0.0;
+				return;
+			}
+			const float blockTop = objectBounds.getMaxY();
+			const bool fromAbove = previousBounds.getMinY() >= blockTop - snapPad;
+			if (fromAbove && playerBounds.getMinY() <= blockTop + 2.f)
+			{
+				setPositionY(blockTop + playerBounds.size.height * 0.5f);
+				m_dYVel = 0.0;
+				return;
+			}
+		}
+		return;
+	}
+
 	if (!horizontalOverlap && !prevHorizontalOverlap)
 	{
 			if (innerBounds.intersectsRect(objectBounds) && !obj->_isTrigger)
@@ -1290,9 +1608,6 @@ void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 
 	const bool flying = isFlying();
 	const float fallStep = std::abs(static_cast<float>(m_dYVel)) * std::max(dt, 0.f);
-	// Cube needs a wide snap so gravity cannot tunnel through a block.
-	// Ship/UFO must only land when they actually approach the surface from outside;
-	// otherwise they get pushed onto every block and fly through the level.
 	const float snapPad = flying ? 6.f : std::max(12.f, fallStep + 6.f);
 
 	if (!isGravityFlipped() && m_dYVel <= 0.f)
@@ -1304,8 +1619,7 @@ void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 		{
 			if (cameFromAbove && playerBounds.getMinY() <= blockTop + 1.f)
 			{
-				setPositionY(blockTop + playerBounds.size.height * 0.5f);
-				hitGround(false);
+				snapToTop();
 				return;
 			}
 		}
@@ -1318,8 +1632,7 @@ void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 			if ((cameFromAbove || slightlyInFromTop || tunneledThrough) &&
 				playerBounds.getMinY() <= blockTop + 1.f)
 			{
-				setPositionY(blockTop + playerBounds.size.height * 0.5f);
-				hitGround(false);
+				snapToTop();
 				return;
 			}
 		}
@@ -1333,8 +1646,7 @@ void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 		{
 			if (cameFromBelow && playerBounds.getMaxY() >= blockBottom - 1.f)
 			{
-				setPositionY(blockBottom - playerBounds.size.height * 0.5f);
-				hitGround(true);
+				snapToBottom();
 				return;
 			}
 		}
@@ -1347,18 +1659,110 @@ void PlayerObject::collidedWithObject(float dt, GameObject* obj)
 			if ((cameFromBelow || slightlyInFromBottom || tunneledThrough) &&
 				playerBounds.getMaxY() >= blockBottom - 1.f)
 			{
-				setPositionY(blockBottom - playerBounds.size.height * 0.5f);
-				hitGround(true);
+				snapToBottom();
 				return;
 			}
 		}
 	}
 
-	// Side / underside / embed is fatal. Flying dies on any non-landing contact
-	// (the 7.5 inner box is too small and lets the ship pass through walls).
+	// Head / underside contact (rising into ceiling, or falling into floor when flipped).
+	const bool headHitNormal = !isGravityFlipped() && m_dYVel > 0.f &&
+		playerBounds.getMaxY() >= objectBounds.getMinY() &&
+		previousBounds.getMaxY() <= objectBounds.getMinY() + snapPad;
+	const bool headHitFlipped = isGravityFlipped() && m_dYVel < 0.f &&
+		playerBounds.getMinY() <= objectBounds.getMaxY() &&
+		previousBounds.getMinY() >= objectBounds.getMaxY() - snapPad;
+	const bool headContact = headHitNormal || headHitFlipped ||
+		(!flying && innerBounds.intersectsRect(objectBounds) &&
+			((!isGravityFlipped() && getPositionY() < objectBounds.getMidY()) ||
+			 (isGravityFlipped() && getPositionY() > objectBounds.getMidY())));
+
+	if (headContact && !obj->_isTrigger &&
+		(_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot ||
+		 _currentGamemode == PlayerGamemodeSpider || !flying))
+	{
+		if (_inLetterF &&
+			(_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot ||
+			 _currentGamemode == PlayerGamemodeSpider))
+		{
+			if (!isGravityFlipped())
+				snapToBottom();
+			else
+				snapToTop();
+			flipGravity(!isGravityFlipped());
+			_holdingFromOrb = m_bIsHolding; // often paired with J blocks
+			m_dYVel = 0.0;
+			return;
+		}
+		if (_inLetterH &&
+			(_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot ||
+			 _currentGamemode == PlayerGamemodeSpider))
+		{
+			if (!isGravityFlipped())
+			{
+				setPositionY(objectBounds.getMinY() - playerBounds.size.height * 0.5f);
+				m_dYVel = std::min(m_dYVel, 0.0);
+			}
+			else
+			{
+				setPositionY(objectBounds.getMaxY() + playerBounds.size.height * 0.5f);
+				m_dYVel = std::max(m_dYVel, 0.0);
+			}
+			setIsOnGround(false);
+			return;
+		}
+	}
+
+	// Side / underside / embed is fatal. Flying dies on any non-landing contact.
 	if (!obj->_isTrigger && (flying || innerBounds.intersectsRect(objectBounds)))
 		if (auto* layer = BaseGameLayer::getInstance())
 			layer->destroyPlayer(this);
+}
+
+float PlayerObject::getModifiedSlopeYVel() const
+{
+	// Geode / official inline.
+	const float diff = _totalTime - _slopeStartTime;
+	if (diff > 0.1f)
+	{
+		if (diff * 10.f > 0.4f)
+			return _slopeVelocity * diff;
+		return _slopeVelocity * 0.4f;
+	}
+	return _slopeVelocity;
+}
+
+float PlayerObject::convertToClosestRotation(float angle) const
+{
+	if (_currentGamemode == PlayerGamemodeShip || _currentGamemode == PlayerGamemodeUFO ||
+		_currentGamemode == PlayerGamemodeWave || _currentGamemode == PlayerGamemodeSwing ||
+		_currentGamemode == PlayerGamemodeRobot || _currentGamemode == PlayerGamemodeSpider || _isDashing)
+		return angle;
+
+	const float playerRotation = static_cast<float>(static_cast<int>(getRotation()) % 360);
+	float diff = std::fmod(playerRotation - angle, 90.f);
+	if (diff < 0.f)
+		diff += 90.f;
+
+	if (std::abs(playerRotation - angle) < std::abs(diff))
+		return angle;
+	return playerRotation - diff;
+}
+
+void PlayerObject::updateSlopeRotation(float dt)
+{
+	// Official: convertToClosestRotation + updateRotation(dt, angle) with Slerp2D rate.
+	const float rot = convertToClosestRotation(_slopeRotation * 57.2957802f);
+	const float fromAngle = getRotation() * 0.017453292f;
+	const float toAngle = rot * 0.017453292f;
+	float mult = m_playerSpeed * 0.175f;
+	if (_currentGamemode == PlayerGamemodeShip)
+		mult *= 0.5f;
+	else if (!isFlying() && _currentGamemode != PlayerGamemodeBall && isOnGround() && !_isOnSlope && !_wasOnSlope)
+		mult *= 3.f;
+
+	const float t = std::min(dt, dt * mult);
+	setRotation(GameToolbox::slerp(fromAngle * 57.29578f, toAngle * 57.29578f, std::clamp(t, 0.f, 1.f)));
 }
 
 void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
@@ -1370,31 +1774,31 @@ void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
 	if (objectBounds.size.width <= 0.f || objectBounds.size.height <= 0.f)
 		return;
 
-	// Wave cannot land on slopes in GD.
-	if (_currentGamemode == PlayerGamemodeWave)
-	{
-		if (auto* layer = BaseGameLayer::getInstance())
-			layer->destroyPlayer(this);
-		return;
-	}
-
 	Rect playerBounds = _mini ? getOuterBounds(0.6f, 0.6f) : getOuterBounds();
 	const float playerRadius = playerBounds.size.height * 0.5f;
 	const float px = getPositionX();
+	const float py = getPositionY();
 	const float upsideMod = isGravityFlipped() ? -1.f : 1.f;
 	const bool slopeFloorTop = obj->slopeFloorTop();
-	const bool slopeUphill = obj->isSlopeUphill();
 
-	// Travelling right into an uphill slope (or left into downhill) = uphill contact.
-	const bool playerUphill = slopeUphill;
+	// camila314/gdp collidedWithSlopeInternal (2.2)
+	const bool goingLeft = m_bIsPlatformer && direction < -0.05f;
+	const bool slopeUphill = obj->isSlopeUphill() != (!goingLeft); // XOR
+	const bool playerUphill = slopeUphill != isGravityFlipped();
+
+	const float slopeYVelocity = (objectBounds.size.height * m_playerSpeed) / objectBounds.size.width;
+	float clingExtra = playerUphill ? (_wasOnSlope ? 4.f : 1.f) : 0.f;
+
+	const bool slopeTopRelated =
+		playerUphill && _isCurrentSlopeTop == slopeFloorTop && isGravityFlipped() == slopeFloorTop;
+	if (_wasOnSlope && _slopeVelocity * flipMod() > 0.f &&
+		(slopeTopRelated || _currentSlopeYVelocity > slopeYVelocity))
+		return;
 
 	const float slopeAngle = obj->getSlopeAngle();
-	const float cosA = std::max(std::cos(slopeAngle), 0.15f);
-	const float playerRadOnSlope = playerRadius / cosA;
-	const float playerRadOnPrevSlope = _wasOnSlope ? (playerRadius / std::max(std::cos(std::abs(_slopeRotation)), 0.15f)) : playerRadius;
-
-	const float clingExtra = playerUphill ? (_wasOnSlope ? 4.f : 1.f) : 0.f;
-	const float onSlopeThreshold = getPositionY() - upsideMod * (playerRadOnPrevSlope + clingExtra);
+	const float playerRadOnSlope = playerRadius / std::max(std::cos(slopeAngle), 0.01f);
+	const float playerRadOnPrevSlope = playerRadius / std::max(std::cos(_slopeRotation), 0.01f);
+	const float onSlopeThreshold = py - upsideMod * (playerRadOnPrevSlope + clingExtra);
 
 	if (_wasOnSlope)
 	{
@@ -1417,32 +1821,45 @@ void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
 			return;
 	}
 
+	const bool isNewSlope =
+		_wasOnSlope && _collidingWithSlopeId != obj->_uniqueID && _isCurrentSlopeTop != slopeFloorTop;
+	const float newSlopeScalar = (isNewSlope && !m_bIsPlatformer) ? (_vehicleSize * 20.f) : 0.f;
+
 	const float slopeY = static_cast<float>(obj->slopeYPos(px));
-	float newPlayerY = slopeY + (playerRadOnSlope) * (slopeFloorTop ? -1.f : 1.f);
+	float newPlayerY = slopeY + (playerRadOnSlope - newSlopeScalar) * (slopeFloorTop ? -1.f : 1.f);
 
 	if (slopeFloorTop)
 	{
-		newPlayerY = std::max(newPlayerY, objectBounds.getMinY() - playerRadius);
+		newPlayerY = std::max(newPlayerY, objectBounds.getMinY() - playerRadius + newSlopeScalar);
 		newPlayerY = std::min(newPlayerY, objectBounds.getMaxY());
 	}
 	else
 	{
-		newPlayerY = std::min(newPlayerY, objectBounds.getMaxY() + playerRadius);
+		newPlayerY = std::min(newPlayerY, objectBounds.getMaxY() + playerRadius - newSlopeScalar);
 		newPlayerY = std::max(newPlayerY, objectBounds.getMinY());
 	}
 
 	const bool slopeUpsideDown = isGravityFlipped() != slopeFloorTop;
 	bool collidedSlope = false;
+	bool skipGroundHit = false;
 
 	if (slopeUpsideDown)
 	{
-		// Ceiling / inverted contact: kill on hard head hits, otherwise ignore soft contact.
-		if (upsideMod * getPositionY() > upsideMod * newPlayerY)
+		float headPad = playerUphill ? 0.f : clingExtra;
+		if (isFlying() && m_bIsHolding)
+			headPad = _wasOnSlope ? 2.f : 1.f;
+
+		collidedSlope = !_isOnSlope && !isNewSlope && (!isFlying() || !playerUphill) &&
+						upsideMod * py > upsideMod * (newPlayerY - headPad);
+		if (upsideMod * py > upsideMod * newPlayerY)
+			collidedSlope = true;
+
+		if (collidedSlope && !isFlying() && _currentGamemode != PlayerGamemodeBall && !m_bIsPlatformer)
 		{
-			if (obj->isSlopeHazard() || (!_wasOnSlope && upsideMod * getPositionY() - 2.f > upsideMod * newPlayerY))
+			if (obj->isSlopeHazard() || (!_wasOnSlope && upsideMod * py - 2.f > upsideMod * newPlayerY))
 			{
 				if (auto* layer = BaseGameLayer::getInstance())
-			layer->destroyPlayer(this);
+					layer->destroyPlayer(this);
 				return;
 			}
 			setPositionY(newPlayerY);
@@ -1450,33 +1867,42 @@ void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
 			setIsOnGround(false);
 			return;
 		}
-		return;
 	}
+	else
+	{
+		// Official bool_h: cling when playerUphill (downhill contact), not rising.
+		const bool canCling = playerUphill && !isNewSlope && !_isOnSlope &&
+							  (!m_isRising || isFlying()) &&
+							  (_currentGamemode != PlayerGamemodeShip || m_bIsHolding);
 
-	// Floor slopes: snap when below (or clinging near) the surface.
-	if (upsideMod * getPositionY() < upsideMod * newPlayerY)
-	{
 		collidedSlope = true;
-	}
-	else if (upsideMod * getPositionY() < upsideMod * (newPlayerY + clingExtra))
-	{
-		collidedSlope = playerUphill || m_dYVel * upsideMod <= 0.0;
+		if (upsideMod * py >= upsideMod * newPlayerY)
+		{
+			collidedSlope = false;
+			if (canCling && upsideMod * py < upsideMod * (newPlayerY + clingExtra))
+			{
+				collidedSlope =
+					(_currentGamemode == PlayerGamemodeUFO) ? (upsideMod * m_dYVel <= 0.0) : true;
+			}
+		}
+
+		skipGroundHit = isFlying() && m_bIsHolding && isNewSlope && !m_bIsPlatformer;
 	}
 
 	if (!collidedSlope)
 		return;
 
-	if (obj->isSlopeHazard())
+	if (obj->isSlopeHazard() || (_currentGamemode == PlayerGamemodeWave && !_inLetterD))
 	{
 		if (auto* layer = BaseGameLayer::getInstance())
 			layer->destroyPlayer(this);
 		return;
 	}
 
-	// Side-hit into a downhill slope before the center reaches it → treat like a block top.
-	if (!_wasOnSlope && !slopeUphill && m_dYVel <= 0.0 && px < objectBounds.getMinX())
+	// Downhill face before center reaches the slope → treat like a block top (pathfinder / older GD).
+	if (!_wasOnSlope && playerUphill && m_dYVel * upsideMod <= 0.0 && px < objectBounds.getMinX() &&
+		_currentGamemode != PlayerGamemodeWave)
 	{
-		setPositionY(objectBounds.getMaxY() + playerRadius * upsideMod * (isGravityFlipped() ? -1.f : 1.f));
 		if (!isGravityFlipped())
 			setPositionY(objectBounds.getMaxY() + playerRadius);
 		else
@@ -1485,36 +1911,74 @@ void PlayerObject::collidedWithSlope(float dt, GameObject* obj)
 		return;
 	}
 
+	if (playerUphill && _currentGamemode == PlayerGamemodeWave && m_bIsHolding &&
+		isGravityFlipped() == slopeFloorTop)
+		return;
+
+	const float oldRotation = _slopeRotation;
 	_currentSlope = obj;
 	_isOnSlope = true;
 	_slopeUphillContact = playerUphill;
-	_slopeRotation = slopeAngle * (playerUphill ? 1.f : -1.f) * flipMod();
+	_isCurrentSlopeTop = slopeFloorTop;
+	_collidingWithSlopeId = obj->_uniqueID;
+	_lastSlopeSnapY = newPlayerY;
 
-	const float slopeYVelocity = (objectBounds.size.height * m_playerSpeed) / objectBounds.size.width;
+	// someMod = flip * (!playerUphill ? -1 : 1) * (goingLeft ? -1 : 1)
+	const float someMod = flipMod() * (playerUphill ? 1.f : -1.f) * (goingLeft ? -1.f : 1.f);
+	_slopeRotation = slopeAngle * someMod;
+
+	_currentSlopeYVelocity = slopeYVelocity;
 	const float angleSafe = std::max(slopeAngle, 0.05f);
-	_slopeVelocity = std::min(1.12f / angleSafe, 1.54f) * slopeYVelocity * flipMod() * (playerUphill ? -1.f : 1.f);
-	if (isFlying() || _currentGamemode == PlayerGamemodeBall)
-		_slopeVelocity *= 0.75f;
+	_slopeVelocity =
+		std::min(1.12f / angleSafe, 1.54f) * _currentSlopeYVelocity * flipMod() * (playerUphill ? -1.f : 1.f);
 
 	if (!_wasOnSlope)
+	{
 		_slopeStartTime = _totalTime;
+		_yVelocityBeforeSlope = m_dYVel;
+	}
 
 	setPositionY(newPlayerY);
-	hitGround(false);
 
-	// Cube rotates to match the slope surface (GD updateSlopeRotation).
-	if (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot)
+	if (!skipGroundHit)
+	{
+		if (slopeUpsideDown)
+		{
+			if (upsideMod * m_dYVel > 0.0)
+				m_dYVel = 0.0;
+			setIsOnGround(false);
+		}
+		else if (_currentGamemode == PlayerGamemodeWave)
+		{
+			m_dYVel = 0.0;
+		}
+		else
+		{
+			const double oldVelocity = m_dYVel;
+			hitGround(false);
+			// Official: keep slam velocity into the slope if it was hard enough.
+			if (upsideMod * oldVelocity > upsideMod * 5.0)
+				m_dYVel = oldVelocity;
+		}
+	}
+
+	if (isFlying() || _currentGamemode == PlayerGamemodeBall)
+	{
+		_slopeVelocity *= 0.75f;
+		if (_currentGamemode == PlayerGamemodeBall && oldRotation != _slopeRotation)
+		{
+			stopRotation();
+			runBallRotation();
+			return;
+		}
+	}
+
+	if (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot ||
+		_currentGamemode == PlayerGamemodeBall)
 	{
 		stopRotation();
-		setRotation(_slopeRotation * 57.29578f);
+		updateSlopeRotation(dt);
 	}
-	else if (_currentGamemode == PlayerGamemodeBall)
-	{
-		stopRotation();
-		setRotation(_slopeRotation * 57.29578f);
-	}
-
-	(void)dt;
 }
 
 void PlayerObject::beginSlopePass()
@@ -1525,6 +1989,8 @@ void PlayerObject::beginSlopePass()
 	{
 		_currentSlope = nullptr;
 		_slopeVelocity = 0.f;
+		_currentSlopeYVelocity = 0.f;
+		_collidingWithSlopeId = -1;
 	}
 }
 
@@ -1534,8 +2000,9 @@ void PlayerObject::endSlopePass(float dt)
 
 	if (_wasOnSlope && !_isOnSlope)
 	{
-		// Leave / eject off the slope (RobTop slope exit velocity).
-		if (_currentSlope && _slopeUphillContact && !isGravityFlipped())
+		// Leave launch: RobTop clamp hold * slopeVelocity (pathfinder / older leave path).
+		const bool ascendingExit = _slopeVelocity * flipMod() > 0.f;
+		if (_currentSlope && ascendingExit && _currentGamemode != PlayerGamemodeWave)
 		{
 			const float hold = std::clamp(10.f * (_totalTime - _slopeStartTime), 0.4f, 1.f);
 			m_dYVel = _slopeVelocity * hold;
@@ -1544,23 +2011,24 @@ void PlayerObject::endSlopePass(float dt)
 			if (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot)
 				runRotateAction();
 		}
-		else if (_wasOnSlope && !_slopeUphillContact)
+		else if (_wasOnSlope && !ascendingExit && _currentGamemode != PlayerGamemodeWave)
 		{
-			// Downhill fall-off
 			setIsOnGround(false);
-			if (_currentGamemode == PlayerGamemodeCube)
+			if (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeRobot)
 				runRotateAction();
 		}
 
 		_currentSlope = nullptr;
 		_slopeVelocity = 0.f;
+		_currentSlopeYVelocity = 0.f;
 		_slopeRotation = 0.f;
+		_collidingWithSlopeId = -1;
+		_isCurrentSlopeTop = false;
 	}
 	else if (_isOnSlope && (_currentGamemode == PlayerGamemodeCube || _currentGamemode == PlayerGamemodeBall ||
 							_currentGamemode == PlayerGamemodeRobot))
 	{
-		// Keep orientation while riding.
-		setRotation(_slopeRotation * 57.29578f);
+		updateSlopeRotation(dt);
 	}
 }
 
@@ -1972,6 +2440,7 @@ void PlayerObject::releaseButton()
 {
 	_queuedHold = false;
 	_hasJustHeld = false;
+	_holdingFromOrb = false;
 	m_bIsHolding = false;
 }
 

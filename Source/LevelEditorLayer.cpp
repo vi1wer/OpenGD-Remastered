@@ -124,7 +124,7 @@ LevelEditorLayer* LevelEditorLayer::create(GJGameLevel* level)
 	}
 	AX_SAFE_DELETE(ret);
 		return nullptr;
-}
+	}
 
 bool LevelEditorLayer::init(GJGameLevel* level)
 {
@@ -678,7 +678,7 @@ void LevelEditorLayer::setupChromeHud()
 void LevelEditorLayer::setupLayerHud()
 {
 	if (!_hudLayer)
-		return;
+	return;
 	if (_layerHud)
 	{
 		_layerHud->removeFromParent();
@@ -2888,6 +2888,7 @@ void LevelEditorLayer::checkPlaytestCollisions(PlayerObject* player, float dt)
 
 	const int currentSection = sectionForPos(player->getPositionX());
 	std::vector<GameObject*> hazards;
+	player->clearLetterBlockFlags();
 
 	auto enterGamemode = [this, player](GameObject* obj, PlayerGamemode mode) {
 		obj->triggerActivated(player);
@@ -2916,6 +2917,13 @@ void LevelEditorLayer::checkPlaytestCollisions(PlayerObject* player, float dt)
 				continue;
 			if (obj->wantsCollisionBounds())
 				obj->refreshCollisionBounds();
+
+			if (obj->isLetterBlock())
+			{
+				if (playerOuterBounds.intersectsRect(obj->getLetterBlockBounds()))
+					player->applyLetterBlock(obj);
+				continue;
+			}
 
 			const GameObjectType earlyType = obj->getGameObjectType();
 			if (earlyType == kGameObjectTypeCubePortal || earlyType == kGameObjectTypeShipPortal ||
@@ -2980,7 +2988,10 @@ void LevelEditorLayer::checkPlaytestCollisions(PlayerObject* player, float dt)
 
 			auto objBounds = obj->getOuterBounds();
 			const GameObjectType objType = obj->getGameObjectType();
-			if (objType == kGameObjectTypeDecoration || objType == kGameObjectTypeSpecial || !obj->wantsCollisionBounds())
+			if (objType == kGameObjectTypeDecoration || objType == kGameObjectTypeSpecial ||
+				objType == kGameObjectTypeLetterD || objType == kGameObjectTypeLetterJ ||
+				objType == kGameObjectTypeLetterS || objType == kGameObjectTypeLetterH ||
+				objType == kGameObjectTypeLetterF || !obj->wantsCollisionBounds())
 				continue;
 			if (obj->_isTrigger)
 				continue;
@@ -3172,8 +3183,8 @@ void LevelEditorLayer::onKeyPressed(EventKeyboard::KeyCode keyCode, Event* event
 	{
 		if (keyCode == EventKeyboard::KeyCode::KEY_ESCAPE)
 			hideEditorMenu();
-		return;
-	}
+			return;
+		}
 
 	if (_playtesting)
 	{
@@ -3447,8 +3458,8 @@ void LevelEditorLayer::onTouchMoved(Touch* touch, Event* event)
 	if (_leftPanning || _cameraPanning)
 	{
 		applyEditorPan(screen);
-		return;
-	}
+	return;
+}
 
 	if (_pendingTap)
 	{
@@ -3567,7 +3578,7 @@ bool LevelEditorLayer::onTouchBegan(Touch* touch, Event* event)
 	if (_playtesting)
 	{
 		if (!_playtestDead && _player1 && !_player1->m_bIsHolding)
-			_player1->pushButton();
+		_player1->pushButton();
 		if (!_playtestDead && _playtestDual && _player2 && !_player2->m_bIsHolding)
 			_player2->pushButton();
 		_playtestJumpHeld = true;
@@ -3627,7 +3638,7 @@ void LevelEditorLayer::onTouchEnded(Touch* touch, Event* event)
 	if (_playtesting)
 	{
 		if (_player1 && _player1->m_bIsHolding)
-			_player1->releaseButton();
+		_player1->releaseButton();
 		if (_playtestDual && _player2 && _player2->m_bIsHolding)
 			_player2->releaseButton();
 		_playtestJumpHeld = false;

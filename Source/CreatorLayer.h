@@ -23,20 +23,39 @@
 namespace ax 
 { 
 	class Event;
+	class Sprite;
 	namespace ui 
 	{ 
 		class TextField; 
 	} 
 }
 
+class DialogLayer;
+class MenuItemSpriteExtra;
+
 class CreatorLayer : public ax::Scene {
 public:
 	static ax::Scene* scene();
 	static CreatorLayer* create();
 	bool init() override;
+	void onEnter() override;
 	
 	void onKeyPressed(ax::EventKeyboard::KeyCode keyCode, ax::Event* event);
 
 private:
-	ax::ui::TextField* _levelField;
+	void onLockPressed();
+	void showKeymasterPoke();
+	void showVaultWelcomeAndEnter();
+	void enterVault();
+	void refreshLockVisual();
+	bool hasVaultDiamonds() const;
+
+	ax::ui::TextField* _levelField = nullptr;
+	DialogLayer* _lockDialog = nullptr;
+	MenuItemSpriteExtra* _lockBtn = nullptr;
+	ax::Sprite* _lockSpr = nullptr;
+	int _lockPoke = 0;
+	static constexpr int kVaultDiamondCost = 100;
+	static constexpr int kKeymasterIcon = 2;   // dialogIcon_002
+	static constexpr int kKeymasterBg = 2;     // GJ_square02 dark blue
 };

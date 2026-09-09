@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0 — 2026-09-09
+
+### Secrets & Fire
+- **Treasure Room** (`SecretRewardsLayer`): Tier 1 / Tier 2, bonus chests, gold chests, shop ropes, Keymaster entry (5 demon keys), `secretLoop` music
+- **The Vault** (Creator lock): Keymaster dialogs; enter with ≥100 diamonds (diamonds are not spent)
+- **Dash fire**: `playerDash2_*` flame + outline on the game layer, boom on release, `dashEffect` particles
+- **Letter blocks** D / J / S / H / F: correct types, no false solid collision; wave slide, hold-jump suppress, stop dash, head-safe, flip gravity
+
+### Gameplay / shops
+- Shop layer and catalog polish closer to official Normal shop
+- DialogLayer improvements for vault / treasure / shopkeepers
+- Slope collision + leave / jump boost closer to official 2.2; mini-wave pitch uses `|velY| = 2|velX|`
+- Demon keys (from orbs), gold keys, treasure unlock / opened-chest save state
+
+### Known limitations
+- Treasure Room loot is offline approximation (not full official icon/shard tables)
+- Secret shop ropes open the Normal shop UI (separate Scratch / Potbor / Mechanic / Diamond catalogs still WIP)
+- Slope / wave physics still not guaranteed bit-identical to RobTop
+- Still not full Geometry Dash 2.2 parity; online / account features incomplete
+
+---
+
 ## 1.2.0 — 2026-09-05
 
 ### Editor / Level Settings
